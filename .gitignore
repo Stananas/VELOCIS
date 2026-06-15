@@ -1,0 +1,19 @@
+# Rust
+/target
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.rs.bk
+
+# AI
+.agents
+skills-lock.json
