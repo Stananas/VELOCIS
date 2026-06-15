@@ -22,6 +22,9 @@ pub struct VelocisApp {
     pub playing: bool,
     pub current_project_id: String,
     pub playback_task: Option<gpui::Task<()>>,
+    pub current_frame_path: Option<PathBuf>,
+    pub current_frame_media_id: Option<String>,
+    pub frame_extract_task: Option<gpui::Task<()>>,
 }
 
 impl VelocisApp {
@@ -43,6 +46,9 @@ impl VelocisApp {
             playing: false,
             current_project_id: pid.clone(),
             playback_task: None,
+            current_frame_path: None,
+            current_frame_media_id: None,
+            frame_extract_task: None,
         };
         if !pid.is_empty()
             && let Some((media, seq, playhead)) = persistence::load_project_data(&pid)
@@ -205,10 +211,14 @@ impl VelocisApp {
                             .flat_map(|t| t.clips.iter())
                             .map(|c| c.position + c.duration)
                             .fold(0.0, f64::max);
-                        if app.playhead_position > max_pos + 1.0 && max_pos > 0.0 {
-                            app.playhead_position = 0.0;
+                        if app.playhead_position >= max_pos && max_pos > 0.0 {
+                            app.playhead_position = max_pos;
                             app.playing = false;
                             app.playback_task = None;
+                        }
+                        let frame_tick = (app.playhead_position * 10.0) as u64;
+                        if frame_tick.is_multiple_of(3) {
+                            app.extract_current_frame(cx);
                         }
                         cx.notify();
                     }) {
@@ -228,6 +238,70 @@ impl VelocisApp {
             .max(0.0);
         let clamped = pos_secs.clamp(0.0, if max_dur > 0.0 { max_dur } else { 100.0 });
         self.playhead_position = clamped;
+    }
+
+    pub fn extract_current_frame(&mut self, cx: &mut Context<Self>) {
+        let pos = self.playhead_position;
+        let video = self.sequence.tracks.iter()
+            .flat_map(|t| t.clips.iter())
+            .filter(|c| pos >= c.position && pos <= c.position + c.duration)
+            .find_map(|c| self.media_items.iter().find(|m| m.id == c.media_id && m.media_type == MediaType::Video))
+            .filter(|m| !m.path.as_os_str().is_empty())
+            .cloned();
+
+        let Some(media) = video else {
+            self.current_frame_path = None;
+            self.current_frame_media_id = None;
+            return;
+        };
+
+        let media_id = media.id.clone();
+        let media_path = media.path;
+        let offset_secs = pos - self.sequence.tracks.iter()
+            .flat_map(|t| t.clips.iter())
+            .filter(|c| c.media_id == media_id)
+            .map(|c| c.position)
+            .next()
+            .unwrap_or(0.0);
+        let offset_secs = offset_secs.max(0.0);
+
+        if let Some(old_path) = self.current_frame_path.take() {
+            let _ = std::fs::remove_file(&old_path);
+        }
+        self.current_frame_media_id = None;
+
+        let weak = cx.weak_entity();
+        let temp_dir = std::env::temp_dir().join("velocis_frames");
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let frame_path = temp_dir.join(format!("frame_{}.png", Self::nanoid()));
+
+        self.frame_extract_task = Some(cx.spawn(move |_weak, async_app: &mut AsyncApp| {
+            let mut async_app = async_app.clone();
+            async move {
+                let output = std::process::Command::new("ffmpeg")
+                    .args([
+                        "-ss", &format!("{:.3}", offset_secs),
+                        "-i", &media_path.to_string_lossy(),
+                        "-vframes", "1",
+                        "-y",
+                        &frame_path.to_string_lossy(),
+                    ])
+                    .output();
+
+                let frame_path = match output {
+                    Ok(out) if out.status.success() => Some(frame_path),
+                    _ => None,
+                };
+                let Some(entity) = weak.upgrade() else { return };
+                let _ = async_app.update_entity(&entity, |app, cx| {
+                    if let Some(path) = frame_path {
+                        app.current_frame_path = Some(path);
+                        app.current_frame_media_id = Some(media_id);
+                    }
+                    cx.notify();
+                });
+            }
+        }));
     }
 
     pub fn add_media_to_timeline(&mut self, media_idx: usize) {
@@ -257,12 +331,13 @@ impl VelocisApp {
         }
     }
 
-    pub fn select_clip(&mut self, clip_id: &str) {
+    pub fn select_clip(&mut self, clip_id: &str, cx: &mut Context<Self>) {
         self.selected_clip_id = Some(clip_id.to_string());
         for track in &self.sequence.tracks {
             for clip in &track.clips {
                 if clip.id == clip_id {
                     self.playhead_position = clip.position;
+                    self.extract_current_frame(cx);
                     return;
                 }
             }
@@ -298,7 +373,7 @@ impl Render for VelocisApp {
                     this.add_media_to_timeline(*idx); cx.notify();
                 });
                 let on_clip_select = cx.listener(|this: &mut Self, id: &String, _: &mut Window, cx: &mut Context<Self>| {
-                    this.select_clip(id); cx.notify();
+                    this.select_clip(id, cx); cx.notify();
                 });
                 let on_toggle = cx.listener(|this: &mut Self, _: &ClickEvent, _window: &mut Window, cx: &mut Context<Self>| {
                     this.toggle_play(cx); cx.notify();
@@ -307,11 +382,14 @@ impl Render for VelocisApp {
                     this.stop_playback(); cx.notify();
                 });
                 let on_seek = cx.listener(|this: &mut Self, pos: &f64, _: &mut Window, cx: &mut Context<Self>| {
-                    this.seek_to(*pos); cx.notify();
+                    this.seek_to(*pos);
+                    this.extract_current_frame(cx);
+                    cx.notify();
                 });
                 let pname = self.current_project_name();
                 layout::editor_layout(&pname, &self.media_items, &self.sequence, &self.selected_clip_id,
                     self.playhead_position, self.playing, 0.0,
+                    &self.current_frame_path, &self.current_frame_media_id,
                     on_home, on_import, on_media_click, on_clip_select, on_toggle, on_stop, on_seek).into_any_element()
             }
         };

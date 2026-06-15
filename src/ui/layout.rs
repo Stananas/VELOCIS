@@ -20,6 +20,21 @@ fn time_str(secs: f64) -> String {
     format!("{:02}:{:02}", (secs as u64) / 60, (secs as u64) % 60)
 }
 
+fn seek_bar_position_to_secs(mouse_x: Pixels, max_dur: f64, window: &Window) -> f64 {
+    let win_w: f64 = window.bounds().size.width.into();
+    let left_panel: f64 = 240.0;
+    let right_panel: f64 = 240.0;
+    let transport_pad: f64 = 24.0;
+    let left_controls: f64 = 60.0;
+    let right_controls: f64 = 160.0;
+    let bar_start = left_panel + transport_pad + left_controls;
+    let bar_end = win_w - right_panel - transport_pad - right_controls;
+    let bar_w = (bar_end - bar_start).max(1.0);
+    let x: f64 = mouse_x.into();
+    let pct = ((x - bar_start) / bar_w).clamp(0.0, 1.0);
+    pct * max_dur
+}
+
 fn transport_bar(
     sequence: &Sequence,
     _media_items: &[MediaItem],
@@ -27,10 +42,11 @@ fn transport_bar(
     playhead_position: f64,
     on_toggle: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     on_stop: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-    _on_seek: impl Fn(&f64, &mut Window, &mut App) + 'static,
+    on_seek: impl Fn(&f64, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     let on_toggle = Rc::new(on_toggle);
     let on_stop = Rc::new(on_stop);
+    let on_seek = Rc::new(on_seek);
     let max_dur = sequence.tracks.iter()
         .flat_map(|t| t.clips.iter())
         .map(|c| c.position + c.duration)
@@ -46,7 +62,19 @@ fn transport_bar(
         )
         .child({
             let pct = if max_dur > 0.0 { (playhead_position / max_dur * 100.0) as f32 } else { 0.0 };
+            let seek_cb = Rc::clone(&on_seek);
+            let mdown_seek = Rc::clone(&on_seek);
             div().id("seek-bar").flex_grow().h(px(20.0)).flex().items_center().cursor_pointer()
+                .on_mouse_down(MouseButton::Left, move |event: &MouseDownEvent, window: &mut Window, cx: &mut App| {
+                    let secs = seek_bar_position_to_secs(event.position.x, max_dur, window);
+                    (seek_cb)(&secs, window, cx);
+                })
+                .on_mouse_move(move |event: &MouseMoveEvent, window: &mut Window, cx: &mut App| {
+                    if event.dragging() {
+                        let secs = seek_bar_position_to_secs(event.position.x, max_dur, window);
+                        (mdown_seek)(&secs, window, cx);
+                    }
+                })
                 .child(
                     div().h(px(4.0)).w_full().bg(theme::surface()).rounded_full().relative()
                         .child(div().h_full().w(px(pct * 4.0)).bg(theme::orange()).rounded_full()),
@@ -77,47 +105,84 @@ fn preview_area(
     sequence: &Sequence,
     media_items: &[MediaItem],
     playhead_position: f64,
+    current_frame_path: &Option<std::path::PathBuf>,
+    current_frame_media_id: &Option<String>,
 ) -> impl IntoElement {
     let (media, dur) = find_media_at_playhead(sequence, media_items, playhead_position)
-        .map_or((None::<&MediaItem>, 0.0), |(m, _)| (Some(m), 0.0));
+        .map_or((None::<&MediaItem>, 0.0), |(m, d)| (Some(m), d));
 
     div()
-        .flex_grow().flex().items_center().justify_center().overflow_hidden().bg(theme::background())
+        .flex_grow().flex().flex_col().overflow_hidden().bg(theme::background())
+        .child(
+            div().flex_grow().flex().items_center().justify_center().overflow_hidden().size_full()
+                .child(if let Some(media) = media {
+                    preview_image(media, dur, current_frame_path, current_frame_media_id)
+                } else {
+                    div().flex().flex_col().items_center().gap_3()
+                        .child(div().font_family("Lexend").text_color(theme::text_secondary()).text_size(px(16.0)).font_weight(FontWeight::SEMIBOLD).child("Lecteur"))
+                        .child(div().font_family("Lexend").text_color(theme::text_muted()).text_size(px(12.0)).child("Ajoutez des medias a la timeline pour commencer"))
+                        .into_any_element()
+                }),
+        )
         .child(if let Some(media) = media {
-            let icon = match media.media_type {
-                crate::core::project::MediaType::Video => "\u{1F3AC}",
-                crate::core::project::MediaType::Audio => "\u{266B}",
-                crate::core::project::MediaType::Image => "\u{1F5BC}",
-                _ => "\u{1F4C1}",
-            };
             let type_lbl = match media.media_type {
                 crate::core::project::MediaType::Video => "Video",
                 crate::core::project::MediaType::Audio => "Audio",
                 crate::core::project::MediaType::Image => "Image",
                 _ => "Fichier",
             };
-            div()
-                .flex().items_center().justify_center().size_full()
-                .child(
-                    div().flex().flex_col().items_center().gap_3()
-                        .child(
-                            div().w(px(480.0)).h(px(300.0)).bg(theme::surface()).rounded_lg()
-                                .border_1().border_color(theme::border())
-                                .flex().items_center().justify_center()
-                                .child(div().text_color(theme::text_muted()).text_size(px(56.0)).child(icon.to_string())),
-                        )
-                        .child(div().font_family("Lexend").text_color(theme::text_primary()).text_size(px(13.0)).font_weight(FontWeight::SEMIBOLD).child(media.name.clone()))
-                        .child(div().font_family("Lexend").text_color(theme::text_secondary()).text_size(px(11.0)).child(format!("{}  ·  {:02}:{:02}", type_lbl, dur as u64 / 60, dur as u64 % 60))),
-                )
+            div().h(px(36.0)).flex().items_center().justify_center().bg(theme::panel()).border_t_1().border_color(theme::border())
+                .child(div().font_family("Lexend").text_color(theme::text_primary()).text_size(px(13.0)).font_weight(FontWeight::SEMIBOLD).child(media.name.clone()))
+                .child(div().font_family("Lexend").text_color(theme::text_secondary()).text_size(px(11.0)).px_2().child(format!("{}  ·  {:02}:{:02}", type_lbl, dur as u64 / 60, dur as u64 % 60)))
+                .into_any_element()
         } else {
-            div()
-                .flex().items_center().justify_center().size_full()
-                .child(
-                    div().flex().flex_col().items_center().gap_3()
-                        .child(div().font_family("Lexend").text_color(theme::text_muted()).text_size(px(14.0)).child("Lecteur"))
-                        .child(div().font_family("Lexend").text_color(theme::text_muted()).text_size(px(11.0)).child("Ajoutez des medias a la timeline")),
-                )
+            div().into_any_element()
         })
+}
+
+fn preview_image(
+    media: &MediaItem,
+    _dur: f64,
+    current_frame_path: &Option<std::path::PathBuf>,
+    current_frame_media_id: &Option<String>,
+) -> AnyElement {
+    let has_path = !media.path.as_os_str().is_empty();
+    match media.media_type {
+        crate::core::project::MediaType::Image if has_path => {
+            img(media.path.clone())
+                .size_full().object_fit(ObjectFit::Contain)
+                .rounded_lg().border_1().border_color(theme::border())
+                .into_any_element()
+        }
+        crate::core::project::MediaType::Video => {
+            if let (Some(frame_path), Some(frame_media_id)) = (current_frame_path, current_frame_media_id)
+                && frame_media_id == &media.id
+            {
+                return img(frame_path.clone())
+                    .size_full().object_fit(ObjectFit::Contain)
+                    .rounded_lg().border_1().border_color(theme::border())
+                    .into_any_element();
+            }
+            placeholder_box("\u{1F3AC}")
+        }
+        crate::core::project::MediaType::Image => {
+            placeholder_box("\u{1F5BC}")
+        }
+        crate::core::project::MediaType::Audio => {
+            placeholder_box("\u{266B}")
+        }
+        _ => {
+            placeholder_box("\u{1F4C1}")
+        }
+    }
+}
+
+fn placeholder_box(icon: &str) -> AnyElement {
+    div().size_full().bg(theme::surface()).rounded_lg()
+        .border_1().border_color(theme::border())
+        .flex().items_center().justify_center()
+        .child(div().text_color(theme::text_muted()).text_size(px(64.0)).child(icon.to_string()))
+        .into_any_element()
 }
 
 #[expect(clippy::too_many_arguments, reason = "GPUI callback pattern")]
@@ -129,6 +194,8 @@ pub fn editor_layout(
     playhead_position: f64,
     playing: bool,
     _player_position: f64,
+    current_frame_path: &Option<std::path::PathBuf>,
+    current_frame_media_id: &Option<String>,
     on_home: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     on_import: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     on_media_click: impl Fn(&usize, &mut Window, &mut App) + 'static,
@@ -166,7 +233,7 @@ pub fn editor_layout(
                 )
                 .child(
                     div().flex().flex_col().flex_grow().h_full()
-                        .child(preview_area(sequence, media_items, playhead_position))
+                        .child(preview_area(sequence, media_items, playhead_position, current_frame_path, current_frame_media_id))
                         .child(transport_bar(sequence, media_items, playing, playhead_position, {
                             let cb = Rc::clone(&on_toggle);
                             move |e, w, cx| (cb)(e, w, cx)

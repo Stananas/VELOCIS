@@ -5,8 +5,11 @@ use crate::ui::theme;
 use crate::core::project::{Sequence, TrackKind, Clip};
 
 const PX_PER_SEC: f32 = 40.0;
+type SeekCallback = Rc<dyn Fn(&f64, &mut Window, &mut App)>;
 
-fn time_ruler(on_seek: impl Fn(&f64, &mut Window, &mut App) + 'static) -> impl IntoElement {
+fn time_ruler(
+    on_seek: SeekCallback,
+) -> impl IntoElement {
     div()
         .h(px(24.0)).w_full().flex().items_center()
         .bg(theme::panel()).border_b_1().border_color(theme::border())
@@ -20,15 +23,19 @@ fn time_ruler(on_seek: impl Fn(&f64, &mut Window, &mut App) + 'static) -> impl I
                         .px_1()
                         .child(div().font_family("Lexend").text_color(theme::text_muted()).text_size(px(9.0)).child(label))
                 }))
-                .on_mouse_down(gpui::MouseButton::Left, {
-                    let cb = on_seek;
-                    move |event: &gpui::MouseDownEvent, _window: &mut Window, cx: &mut App| {
-                        let rel_x: f64 = event.position.x.into();
-                        let secs = ((rel_x - 80.0) / PX_PER_SEC as f64).max(0.0);
-                        (cb)(&secs, _window, cx);
+                .on_mouse_down(MouseButton::Left, {
+                    let cb = Rc::clone(&on_seek);
+                    move |event: &MouseDownEvent, window: &mut Window, cx: &mut App| {
+                        let secs = mouse_x_to_secs(event.position.x);
+                        (cb)(&secs, window, cx);
                     }
                 }),
         )
+}
+
+fn mouse_x_to_secs(mouse_x: Pixels) -> f64 {
+    let x: f64 = mouse_x.into();
+    ((x - 80.0) / PX_PER_SEC as f64).max(0.0)
 }
 
 fn track_label(name: &str, kind: &TrackKind) -> impl IntoElement {
@@ -68,11 +75,21 @@ pub fn timeline(
     on_seek: impl Fn(&f64, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     let on_clip_select = Rc::new(on_clip_select);
+    let on_seek: SeekCallback = Rc::new(on_seek);
 
     div()
-        .flex().flex_col().size_full()
+        .flex().flex_col().size_full().relative()
         .bg(theme::panel())
-        .child(time_ruler(on_seek))
+        .child(time_ruler(Rc::clone(&on_seek)))
+        .on_mouse_move({
+            let cb = Rc::clone(&on_seek);
+            move |event: &MouseMoveEvent, window: &mut Window, cx: &mut App| {
+                if event.dragging() {
+                    let secs = mouse_x_to_secs(event.position.x);
+                    (cb)(&secs, window, cx);
+                }
+            }
+        })
         .children(sequence.tracks.iter().map(|track| {
             let on_cs = on_clip_select.clone();
             let clips: Vec<gpui::AnyElement> = track.clips.iter().enumerate().map(|(ci, clip)| {

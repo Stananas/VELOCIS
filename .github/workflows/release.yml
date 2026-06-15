@@ -1,0 +1,41 @@
+name: Release
+
+on:
+  push:
+    tags: [ "v*" ]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release
+        run: cargo build --release --verbose
+
+      - name: Upload binary
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: target/release/velocis
+          asset_name: velocis-x86_64-linux
+          tag: ${{ github.ref }}
+          overwrite: true
+
+      - name: Generate checksum
+        run: sha256sum target/release/velocis > velocis-x86_64-linux.sha256
+
+      - name: Upload checksum
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: velocis-x86_64-linux.sha256
+          tag: ${{ github.ref }}
+          overwrite: true
