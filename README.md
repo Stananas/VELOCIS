@@ -1,56 +1,43 @@
 # VELOCIS
 
-Éditeur vidéo nouvelle génération — natif, GPU-accéléré, écrit en Rust.
+Éditeur vidéo nouvelle génération — Web/Desktop, GPU-accéléré.
 
-## Lancer
+## Stack
+
+- **UI** — React + TypeScript + Vite
+- **Desktop** — Electron
+- **Rendu** — Rust → WebAssembly (WebGL2)
+- **Décodage** — Navigateur natif (MSE / `<video>`)
+
+## Lancer (dev)
 
 ```bash
-cargo run
+npm run dev
 ```
 
-Première compilation : 5-10 min. Ensuite : 1-3 sec.
+## Builder le module Wasm
 
-## Raccourcis
-
-| Touche | Action |
-|---|---|
-| `Ctrl+K` | Palette de commandes |
-| `Ctrl+Shift+H` | Retour à l'accueil |
-| `Ctrl+N` | Nouveau projet |
-| `Ctrl+S` | Enregistrer |
-
-## Fonctionnalités
-
-- **Accueil** : grille de projets récents, créer un projet
-- **Éditeur** : panneau médias (import + clic → ajout à la timeline), lecteur/preview, panneau effets, timeline
-- **Timeline** : 3 pistes (V1 vidéo, A1 audio, T1 texte), clips visuels, tête de lecture, sélection
-- **Médias** : import de médias exemples, cliquez pour ajouter à la timeline
-- **Police** : Lexend (design system moderne)
-- **Palette** : fond `#08090A`, orange `#FF5C00`, bleu `#2F5FEE`, texte `#F3F4F6`
+```bash
+npm run build:wasm
+```
 
 ## Structure
 
 ```
-src/
-├── main.rs          ← Entrée, raccourcis clavier
-├── app.rs           ← État global, routage Accueil ↔ Éditeur
-├── core/
-│   ├── project.rs   ← Modèles : Projet, Media, Piste, Clip
-│   └── state.rs     ← AppView, Settings, actions
-└── ui/
-    ├── theme.rs     ← Design system (couleurs)
-    ├── home.rs      ← Écran d'accueil
-    ├── layout.rs    ← Éditeur (top bar, médias, lecteur, timeline)
-    ├── command.rs   ← Palette Ctrl+K
-    ├── panels/
-    │   └── media.rs ← Panneau médias
-    └── timeline/
-        └── mod.rs   ← Timeline + clips + tête de lecture
-```
-
-## Stack
-
-- **UI** — GPUI (rendu GPU natif)
-- **Graphisme** — Wgpu (compute shaders)
-- **Média** — GStreamer (décodage/encodage)
-- **Police** — Lexend
+├── src/                ← Code React (UI, Timeline, état)
+│   ├── App.tsx
+│   ├── components/
+│   │   ├── Preview.tsx   ← Canvas WebGL2 piloté par Wasm
+│   │   ├── Timeline.tsx   ← Timeline de clips
+│   │   └── MediaPanel.tsx ← Panneau médias
+│   ├── hooks/
+│   │   └── usePreviewRenderer.ts
+│   └── lib/
+│       ├── wasm-bridge.ts    ← Interface Wasm ↔ React
+│       └── wasm/             ← Module Wasm compilé (généré)
+├── src-wasm/           ← Code source Rust Wasm
+│   ├── Cargo.toml
+│   └── src/
+│       └── lib.rs      ← Renderer WebGL2 (wasm-bindgen)
+└── electron/           ← Wrapper Electron
+    └── main.ts
