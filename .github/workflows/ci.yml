@@ -2,44 +2,35 @@ name: CI
 
 on:
   push:
-    branches: [ "master" ]
+    branches: ["master"]
   pull_request:
-    branches: [ "master" ]
+    branches: ["master"]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  check:
+  engine:
+    name: Moteur
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install system deps
-        run: sudo apt-get update && sudo apt-get install -y libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
+
+      # The engine drives ffmpeg as a subprocess; the build only needs the
+      # binaries present, not the development headers.
+      - name: Installer ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
+
       - uses: Swatinem/rust-cache@v2
+
       - name: Format
-        run: cargo fmt --check
-      - name: Clippy
-        run: cargo clippy -- -D warnings
+        run: cargo fmt --all -- --check
 
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install system deps
-        run: sudo apt-get update && sudo apt-get install -y libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
-      - uses: Swatinem/rust-cache@v2
-      - name: Test
-        run: cargo test --verbose
+      - name: Analyse statique
+        run: cargo clippy --all-targets -- -D warnings
 
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install system deps
-        run: sudo apt-get update && sudo apt-get install -y libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
-      - uses: Swatinem/rust-cache@v2
-      - name: Build
-        run: cargo build --verbose
-      - name: Build (release)
-        run: cargo build --release --verbose
+      - name: Tests
+        run: cargo test --all
+
+      - name: Compilation
+        run: cargo build --release

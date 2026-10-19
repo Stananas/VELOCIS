@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Velocis — studio vidéo</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='32' y2='32' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='0' stop-color='%237C5CFF'/%3E%3Cstop offset='1' stop-color='%23C084FC'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='9' fill='url(%23g)'/%3E%3Cpath d='M10 9.5 L16.6 22.5 L23.4 9.5' stroke='white' stroke-width='3.1' stroke-linecap='round' stroke-linejoin='round' transform='skewX(-7)'/%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <div class="app">
+      <!-- ================================================== header ======= -->
+      <header class="header">
+        <div class="brand">
+          <svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="velocis-mark-a" x1="2" y1="0" x2="30" y2="32" gradientUnits="userSpaceOnUse">
+                <stop offset="0" stop-color="#7C5CFF" />
+                <stop offset="1" stop-color="#C084FC" />
+              </linearGradient>
+            </defs>
+            <rect width="32" height="32" rx="9" fill="url(#velocis-mark-a)" />
+            <g transform="skewX(-7)">
+              <path d="M10 9.5 L16.6 22.5 L23.4 9.5" stroke="#fff" stroke-width="3.1" stroke-linecap="round" stroke-linejoin="round" />
+            </g>
+          </svg>
+          <span>Velocis</span>
+          <span class="brand-sub">Studio</span>
+        </div>
+
+        <input
+          id="project-name"
+          class="project-name"
+          type="text"
+          aria-label="Nom de la vidéo"
+          value="Projet sans titre"
+          spellcheck="false"
+        />
+
+        <div class="header-spacer"></div>
+
+        <div class="toggle-row" id="aspect-switch" aria-label="Format de la vidéo"></div>
+
+        <button class="btn icon" id="btn-undo" title="Annuler" aria-label="Annuler"></button>
+        <button class="btn icon" id="btn-redo" title="Rétablir" aria-label="Rétablir"></button>
+        <button class="btn icon" id="btn-theme" title="Thème clair ou sombre" aria-label="Changer de thème"></button>
+        <button class="btn icon" id="btn-help" title="Raccourcis clavier" aria-label="Raccourcis clavier">?</button>
+        <button class="btn primary" id="btn-export" aria-label="Exporter la vidéo">
+          <span id="export-label">Exporter</span>
+        </button>
+      </header>
+
+      <!-- ================================================== middle ======= -->
+      <div class="middle" id="middle">
+        <!-- ------------------------------------------- left sidebar ---- -->
+        <aside class="sidebar" aria-label="Panneau de contenu">
+          <div class="tabs" role="tablist">
+            <button class="tab" role="tab" data-tab="media" aria-selected="true">Média</button>
+            <button class="tab" role="tab" data-tab="text" aria-selected="false">Texte</button>
+            <button class="tab" role="tab" data-tab="effects" aria-selected="false">Effets</button>
+          </div>
+
+          <div class="panel" data-panel="media">
+            <div class="dropzone" id="dropzone" tabindex="0" role="button">
+              <strong>Importer un média</strong>
+              Glissez vos fichiers ici, ou cliquez pour parcourir.<br />
+              Vidéo, image et audio sont acceptés.
+            </div>
+            <input type="file" id="file-input" multiple hidden accept="video/*,audio/*,image/*" />
+            <div class="chip-row">
+              <button class="chip" id="btn-import-path">Importer par chemin…</button>
+            </div>
+            <div class="media-grid" id="media-grid"></div>
+            <p class="hint why" id="media-hint">
+              Astuce : double-cliquez une vignette pour l'ajouter à la fin de la timeline.
+            </p>
+          </div>
+
+          <div class="panel" data-panel="text" hidden>
+            <div class="field">
+              <label for="text-content">Contenu</label>
+              <textarea id="text-content" placeholder="Votre texte">Titre</textarea>
+            </div>
+            <div class="field">
+              <label for="text-size">Taille <b id="text-size-value">72</b></label>
+              <input type="range" id="text-size" min="24" max="200" step="2" value="72" />
+            </div>
+            <div class="field">
+              <label for="text-duration">Durée <b id="text-duration-value">3,0 s</b></label>
+              <input type="range" id="text-duration" min="500" max="15000" step="250" value="3000" />
+            </div>
+            <button class="btn primary" id="btn-add-text" style="width: 100%">Ajouter le texte</button>
+            <p class="hint why">
+              Le texte est placé au niveau du curseur, sur la piste vidéo du dessus.
+            </p>
+          </div>
+
+          <div class="panel" data-panel="effects" hidden>
+            <p class="hint" id="effects-intro">
+              Sélectionnez un clip sur la timeline, puis ajoutez-lui un effet.
+            </p>
+            <div id="effects-catalog"></div>
+          </div>
+        </aside>
+
+        <!-- ------------------------------------------------- stage ------ -->
+        <section class="stage-wrap" aria-label="Aperçu">
+          <div class="stage">
+            <div class="stage-inner" id="stage-inner">
+              <video id="preview" playsinline preload="auto" hidden></video>
+              <div class="stage-empty" id="stage-empty"></div>
+            </div>
+          </div>
+          <div class="transport">
+            <button class="btn icon" id="btn-play" title="Lecture (Espace)" aria-label="Lecture"></button>
+            <span class="timecode"><b id="tc-current">00:00.00</b> / <span id="tc-total">00:00.00</span></span>
+            <div class="scrub" id="scrub">
+              <div class="scrub-track">
+                <div class="scrub-fill" id="scrub-fill"></div>
+                <div class="scrub-thumb" id="scrub-thumb" style="left: 0"></div>
+              </div>
+            </div>
+            <button class="btn" id="btn-preview">
+              <span id="preview-label">Actualiser l'aperçu</span>
+            </button>
+            <span class="hint why" id="preview-state"></span>
+          </div>
+        </section>
+
+        <!-- --------------------------------------------- inspector ------ -->
+        <aside class="inspector" aria-label="Panneau de propriétés">
+          <div class="tabs" role="tablist" id="inspector-tabs"></div>
+          <div class="panel" id="inspector-body"></div>
+        </aside>
+      </div>
+
+      <!-- ================================================== timeline ===== -->
+      <section class="timeline" aria-label="Timeline">
+        <div class="timeline-bar">
+          <button class="btn small icon" id="btn-add-video-track" title="Ajouter une piste vidéo">+V</button>
+          <button class="btn small icon" id="btn-add-audio-track" title="Ajouter une piste audio">+A</button>
+          <span class="sep"></span>
+          <button class="btn small" id="btn-split" title="Découper au curseur (S)">Découper</button>
+          <button class="btn small" id="btn-delete" title="Supprimer le clip sélectionné (Suppr)">Supprimer</button>
+          <button class="btn small" id="btn-duplicate" title="Dupliquer (Ctrl+D)">Dupliquer</button>
+          <span class="sep"></span>
+          <button class="btn small" id="btn-fit" title="Ajuster le zoom à la durée">Ajuster</button>
+          <div class="zoom">
+            <span aria-hidden="true">−</span>
+            <input
+              type="range"
+              id="zoom"
+              min="6"
+              max="320"
+              step="1"
+              value="64"
+              aria-label="Zoom de la timeline"
+            />
+            <span aria-hidden="true">+</span>
+          </div>
+        </div>
+
+        <div class="timeline-body">
+          <div class="track-heads" id="track-heads"></div>
+          <div class="ruler-wrap" id="ruler-wrap"></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+    <div id="modal-host"></div>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

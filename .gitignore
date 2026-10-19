@@ -1,26 +1,17 @@
-# Dependencies
-node_modules/
-pkg/
+# Cibles de compilation
+/target
+**/target
 
-# Build output
-dist/
-dist-electron/
+# Données locales de l'application (projets, médias importés, rendus)
+/.velocis
+*.velocis
 
-# Rust (Wasm workspace)
-src-wasm/target/
+# Sorties de rendu
+*.mp4
+*.webm
 
-# OS
+# Divers
 .DS_Store
-Thumbs.db
-desktop.ini
-
-# Editor
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# AI
-.agents
-skills-lock.json
+*.log
+*.tsbuildinfo
+node_modules/

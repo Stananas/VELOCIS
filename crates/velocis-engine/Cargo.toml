@@ -1,0 +1,17 @@
+[package]
+name = "velocis-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Timeline/project domain model and ffmpeg-backed render engine"
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[[example]]
+name = "smoke"
+path = "examples/smoke.rs"
