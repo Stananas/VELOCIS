@@ -1358,3 +1358,45 @@ textarea:focus {
   white-space: nowrap;
   border: 0;
 }
+
+/* Media thumbnails carry their own "add to timeline" action: dragging is precise
+   but undiscoverable, a button is not. */
+.media-card {
+  position: relative;
+}
+
+.media-card .add {
+  position: absolute;
+  top: var(--s-3);
+  right: var(--s-3);
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  background: rgba(10, 10, 16, 0.72);
+  backdrop-filter: blur(6px);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--t-fast) var(--ease), background var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease);
+}
+
+.media-card:hover .add,
+.media-card .add:focus-visible {
+  opacity: 1;
+}
+
+.media-card .add:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: scale(1.08);
+}
+
+.media-card .add svg {
+  width: 14px;
+  height: 14px;
+}

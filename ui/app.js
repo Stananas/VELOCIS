@@ -36,10 +36,25 @@ function fmtTime(us, withFrames = false) {
 }
 
 function fmtDuration(us) {
-  const s = us / US;
-  if (s < 60) return `${s.toFixed(1).replace(".", ",")} s`;
-  const m = Math.floor(s / 60);
-  return `${m} min ${Math.round(s % 60)} s`;
+  const total = Math.max(0, us) / US;
+  if (total < 60) return `${total.toFixed(1).replace(".", ",")} s`;
+  let minutes = Math.floor(total / 60);
+  const seconds = Math.round(total % 60);
+  // Rounding the seconds can reach 60: carry it instead of printing "3 min 60 s".
+  if (seconds === 60) {
+    minutes += 1;
+    return `${minutes} min`;
+  }
+  return `${minutes} min ${seconds} s`;
+}
+
+/** Compact form for dense surfaces: 3:59 rather than "3 min 59 s". */
+function fmtShort(us) {
+  const total = Math.max(0, us) / US;
+  if (total < 60) return `${total.toFixed(1).replace(".", ",")} s`;
+  const minutes = Math.floor(total / 60);
+  const seconds = Math.floor(total % 60);
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 function fmtBytes(n) {
@@ -351,9 +366,13 @@ function renderSidebar() {
       const icon = a.kind === "audio" ? ICONS.audio : a.kind === "image" ? ICONS.image : ICONS.video;
       const thumb = a.thumbnail_path ? `style="background-image:url('${esc(fileUrl(a.thumbnail_path))}')"` : "";
       const dims = a.width ? `${a.width}×${a.height}` : a.audio_channels ? `${a.audio_channels} canaux` : "";
-      return `<div class="media-card" draggable="true" data-asset="${esc(a.id)}" title="Glissez sur la timeline">
-        <div class="thumb" ${thumb}>${a.thumbnail_path ? "" : icon}</div>
-        <div class="meta"><b>${esc(a.name)}</b><span>${fmtDuration(a.duration)}</span></div>
+      return `<div class="media-card" draggable="true" data-asset="${esc(a.id)}" title="Glissez sur la timeline, ou cliquez sur +">
+        <div class="thumb" ${thumb}>${a.thumbnail_path ? "" : icon}
+          <button class="add" data-add-asset="${esc(a.id)}" title="Ajouter à la fin de la timeline" aria-label="Ajouter ${esc(a.name)} à la timeline">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 3v10M3 8h10"/></svg>
+          </button>
+        </div>
+        <div class="meta"><b>${esc(a.name)}</b><span>${fmtShort(a.duration)}</span></div>
         <div class="meta"><span>${dims}</span><span>${esc(a.video_codec || a.audio_codec || "")}</span></div>
       </div>`;
     })
@@ -1261,6 +1280,13 @@ function bindEvents() {
       if (result.imported?.length) toast(`« ${result.imported[0].name} » importé`, "success");
     }
   };
+
+  $("media-grid").addEventListener("click", (e) => {
+    const add = e.target.closest("[data-add-asset]");
+    if (!add) return;
+    e.stopPropagation();
+    addToTimeline(add.dataset.addAsset);
+  });
 
   $("media-grid").addEventListener("dblclick", (e) => {
     const card = e.target.closest("[data-asset]");
