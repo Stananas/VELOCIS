@@ -113,7 +113,13 @@ impl App {
     /// kilobytes, and an editor that can lose your work is not worth using.
     fn persist(&self, project: &Project) {
         if let Ok(json) = serde_json::to_string_pretty(project) {
-            let _ = std::fs::write(self.autosave_path(), json);
+            let path = self.autosave_path();
+            // Keep the previous state: a save that turns out to be wrong (or a
+            // crash mid-write) must not be the only copy of the timeline.
+            if path.is_file() {
+                let _ = std::fs::copy(&path, path.with_extension("prev.json"));
+            }
+            let _ = std::fs::write(&path, json);
         }
     }
 
@@ -202,18 +208,25 @@ pub fn session_info(editor: &Editor) -> SessionInfo {
 pub fn import_file(app: &App, path: &Path) -> anyhow::Result<MediaAsset> {
     let mut asset = probe::probe(path)?;
     let stem = format!("{:016x}", hash_string(&asset.path));
+    // Peaks require decoding the whole audio track. On a four-hour file that is
+    // minutes of work for a detail nobody can read at that zoom level, so long
+    // assets are imported without a waveform.
+    let want_waveform = asset.duration <= 20 * 60 * ONE_SECOND;
     match asset.kind {
         AssetKind::Audio => {
-            let peaks = thumbs::extract_waveform(path, asset.duration, 1200)?;
-            asset.waveform = Some(peaks);
+            if want_waveform {
+                asset.waveform = Some(thumbs::extract_waveform(path, asset.duration, 1200)?);
+            }
         }
         _ => {
             let thumb = app.media_dir.join(format!("thumb_{stem}.jpg"));
             thumbs::write_thumbnail(path, (asset.duration / 8).max(0), 320, &thumb)?;
             asset.thumbnail_path = Some(thumb.to_string_lossy().into_owned());
-            let peaks = thumbs::extract_waveform(path, asset.duration, 1200)?;
-            if !peaks.peaks.is_empty() {
-                asset.waveform = Some(peaks);
+            if want_waveform {
+                let peaks = thumbs::extract_waveform(path, asset.duration, 1200)?;
+                if !peaks.peaks.is_empty() {
+                    asset.waveform = Some(peaks);
+                }
             }
         }
     }
@@ -297,10 +310,106 @@ pub fn render_export(
     })
 }
 
+/// Length of one proxy segment.
+///
+/// Short enough that generating one is a few seconds of work, long enough that
+/// continuous playback does not outrun the encoder.
+pub const PROXY_SEGMENT_SECONDS: u32 = 15;
+/// Preview proxies are never larger than this: the stage is a few hundred pixels
+/// wide, so decoding 1080p there would cost more than it shows.
+const PROXY_HEIGHT: u32 = 480;
+
+/// Scale filter for proxy segments.
+///
+/// `-2` means "keep the aspect ratio and make it divisible by 2". Adding
+/// `force_original_aspect_ratio` on top overrides that rounding and produced
+/// 853x480 on a 1080p source, which H.264 refuses; the parameter is also
+/// meaningless when the other dimension is fixed.
+fn proxy_scale_filter() -> String {
+    format!("scale=-2:{PROXY_HEIGHT}")
+}
+
+fn proxy_path(app: &App, asset: &MediaAsset, index: i64) -> PathBuf {
+    let stem = format!("{:016x}", hash_string(&asset.path));
+    app.media_dir
+        .join("proxy")
+        .join(format!("{stem}_{index:05}.mp4"))
+}
+
+/// Produce (or reuse) the proxy segment covering `[index * len, (index+1) * len)`
+/// of the asset's source timeline.
+///
+/// This is what lets a Matroska/HEVC file be edited at all: the browser cannot
+/// decode it, so it plays a small H.264 window while the export keeps reading
+/// the original.
+pub fn ensure_proxy_segment(app: &App, asset: &MediaAsset, index: i64) -> anyhow::Result<PathBuf> {
+    if index < 0 {
+        anyhow::bail!("segment invalide");
+    }
+    let output = proxy_path(app, asset, index);
+    if let Ok(meta) = std::fs::metadata(&output) {
+        if meta.len() > 0 {
+            return Ok(output);
+        }
+    }
+    if let Some(parent) = output.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let start = index as f64 * PROXY_SEGMENT_SECONDS as f64;
+    let mut command = std::process::Command::new(velocis_engine::probe::ffmpeg_bin());
+    command.args(["-hide_banner", "-loglevel", "error", "-y"]);
+    // Fast seek before the input: decoding four hours to reach the segment would
+    // make scrubbing unusable.
+    command.args(["-ss", &format!("{start:.3}")]);
+    command.args(["-t", &PROXY_SEGMENT_SECONDS.to_string()]);
+    command.arg("-i").arg(&asset.path);
+    command.args(["-sn", "-dn"]);
+    command.args(["-vf", &proxy_scale_filter()]);
+    command.args(["-c:v", "libx264", "-preset", "veryfast", "-crf", "26"]);
+    command.args(["-pix_fmt", "yuv420p", "-r", "30"]);
+    if asset.audio_codec.is_some() {
+        command.args(["-c:a", "aac", "-b:a", "96k", "-ac", "2"]);
+    } else {
+        command.arg("-an");
+    }
+    command.args(["-movflags", "+faststart"]);
+    command.arg(&output);
+
+    let result = command
+        .output()
+        .map_err(|error| anyhow::anyhow!("lancement de ffmpeg impossible : {error}"))?;
+    if !result.status.success() {
+        let _ = std::fs::remove_file(&output);
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        anyhow::bail!("génération du proxy échouée : {}", stderr.trim());
+    }
+    if std::fs::metadata(&output).map(|m| m.len()).unwrap_or(0) == 0 {
+        let _ = std::fs::remove_file(&output);
+        anyhow::bail!("le proxy généré est vide");
+    }
+    Ok(output)
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ExportReportLite {
     pub output: String,
     pub bytes: u64,
     pub encoder: Encoder,
     pub elapsed: f64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn proxy_scale_keeps_dimensions_even() {
+        // Regression guard: a filter that allows an odd width makes the encoder
+        // fail with "width not divisible by 2" on ordinary 1080p footage.
+        let filter = proxy_scale_filter();
+        assert!(filter.contains("-2"));
+        assert!(!filter.contains("force_original_aspect_ratio"));
+        assert!(filter.contains(&PROXY_HEIGHT.to_string()));
+    }
 }

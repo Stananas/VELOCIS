@@ -50,13 +50,18 @@ function fmtDuration(us) {
   return `${minutes} min ${seconds} s`;
 }
 
-/** Compact form for dense surfaces: 3:59 rather than "3 min 59 s". */
+/** Compact form for dense surfaces: 3:59 or 4 h 49, never "289:24". */
 function fmtShort(us) {
   const total = Math.max(0, us) / US;
   if (total < 60) return `${total.toFixed(1).replace(".", ",")} s`;
-  const minutes = Math.floor(total / 60);
-  const seconds = Math.floor(total % 60);
-  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  if (total < 3600) {
+    const minutes = Math.floor(total / 60);
+    const seconds = Math.floor(total % 60);
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  }
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.round((total % 3600) / 60);
+  return minutes === 60 ? `${hours + 1} h` : `${hours} h ${String(minutes).padStart(2, "0")}`;
 }
 
 function fmtBytes(n) {
@@ -382,6 +387,40 @@ function renderSidebar() {
   $("media-hint").hidden = p.assets.length > 0;
 
   renderEffectsCatalog();
+}
+
+/* Preview proxies: a source the browser cannot decode is prepared slice by
+   slice, so a four-hour Matroska file stays editable without transcoding it all. */
+const proxyJobs = new Map();
+let proxyPending = 0;
+
+function setLiveLabel(label) {
+  const badge = document.querySelector(".live-badge");
+  if (badge) badge.innerHTML = `<span class="dot"></span> ${esc(label)}`;
+}
+
+async function ensureProxy(assetId, index) {
+  const key = `${assetId}:${index}`;
+  if (proxyJobs.has(key)) return proxyJobs.get(key);
+  proxyPending += 1;
+  setLiveLabel("Préparation de l'aperçu…");
+  const promise = (async () => {
+    const job = await api.post("/api/proxy", { asset_id: assetId, index });
+    const result = await pollJob(job.id);
+    if (result?.status === "done" && result.output) return result.output;
+    throw new Error(result?.message || "segment d'aperçu indisponible");
+  })();
+  proxyJobs.set(key, promise);
+  promise
+    .catch((error) => {
+      proxyJobs.delete(key);
+      toast(error.message, "error");
+    })
+    .finally(() => {
+      proxyPending = Math.max(0, proxyPending - 1);
+      if (proxyPending === 0) setLiveLabel("Composition en direct");
+    });
+  return promise;
 }
 
 /** The service writes thumbnails inside its media directory. */
@@ -1767,6 +1806,17 @@ async function boot() {
       S.playing = stage.playing;
       updateTransport();
     },
+    segmentSeconds: 15,
+    onNeedProxy: (assetId, index) => {
+      if (!S.proxyNoticed) {
+        S.proxyNoticed = true;
+        toast(
+          "Ce média n'est pas lisible par le navigateur : Velocis prépare un aperçu par segments. L'export utilisera le fichier d'origine.",
+          "info"
+        );
+      }
+      return ensureProxy(assetId, index);
+    },
     onBlocked: () => {
       S.playing = false;
       updateTransport();
@@ -1786,6 +1836,7 @@ async function boot() {
   } catch {
     /* capabilities are informational only */
   }
+  if (S.caps?.proxy_segment_seconds && stage) stage.segmentSeconds = S.caps.proxy_segment_seconds;
   await refresh();
   if (S.caps) {
     toast(

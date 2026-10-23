@@ -422,6 +422,18 @@ pub struct MediaAsset {
     pub thumbnail_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub waveform: Option<Waveform>,
+    /// Whether a browser can decode this file directly.
+    ///
+    /// Matroska and HEVC are the common cases where ffmpeg is happy and the
+    /// browser is not: the live preview then needs proxy media, while the export
+    /// keeps using the original. Projects written before this field existed are
+    /// assumed playable, which is what their preview already relied on.
+    #[serde(default = "default_true")]
+    pub browser_playable: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

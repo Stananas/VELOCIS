@@ -42,6 +42,10 @@ impl Editor {
     }
 
     /// Run a mutation, recording it for undo. Clears the redo stack.
+    ///
+    /// A failed operation is rolled back entirely. Without that, an error raised
+    /// halfway through a mutation would leave the document changed but with no
+    /// undo entry to get back — the worst of both outcomes.
     pub fn apply<T>(
         &mut self,
         label: impl Into<String>,
@@ -51,14 +55,20 @@ impl Editor {
             project: self.project.clone(),
             label: label.into(),
         };
-        let result = f(&mut self.project)?;
+        let value = match f(&mut self.project) {
+            Ok(value) => value,
+            Err(error) => {
+                self.project = snapshot.project;
+                return Err(error);
+            }
+        };
         self.project.touch();
         self.undo.push(snapshot);
         if self.undo.len() > UNDO_DEPTH {
             self.undo.remove(0);
         }
         self.redo.clear();
-        Ok(result)
+        Ok(value)
     }
 
     /// Mutation that should not be undoable (e.g. cursor position, selection).
@@ -537,6 +547,7 @@ mod tests {
             size_bytes: 1,
             thumbnail_path: None,
             waveform: None,
+            browser_playable: true,
         });
     }
 
@@ -731,6 +742,27 @@ mod tests {
         assert!(editor.redo());
         assert_eq!(editor.project.tracks[0].clips.len(), 1);
         assert_eq!(editor.undo_label(), Some("Ajouter un clip"));
+    }
+
+    #[test]
+    fn a_failed_mutation_leaves_no_trace() {
+        let mut p = project();
+        asset(&mut p, "a1", 5 * ONE_SECOND);
+        let track = p.tracks[0].id.clone();
+        let mut editor = Editor::new(p);
+        editor
+            .apply("Ajouter", |p| append_clip(p, &track, "a1", None))
+            .unwrap();
+        let before = serde_json::to_string(&editor.project).unwrap();
+
+        // The clip id does not exist: the operation must fail *and* change nothing.
+        let result = editor.apply("Découper", |p| {
+            split_clip(p, "inconnu", ONE_SECOND).map(|_| ())
+        });
+        assert!(result.is_err());
+        assert_eq!(serde_json::to_string(&editor.project).unwrap(), before);
+        // And the failed attempt must not have consumed the undo stack.
+        assert_eq!(editor.undo_label(), Some("Ajouter"));
     }
 
     #[test]

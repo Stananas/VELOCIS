@@ -191,7 +191,40 @@ pub fn probe(path: &Path) -> Result<MediaAsset> {
         size_bytes,
         thumbnail_path: None,
         waveform: None,
+        browser_playable: browser_playable(&ext, video.and_then(|s| s.codec_name.as_deref())),
     })
+}
+
+/// Can a Chromium-family browser decode this file as-is?
+///
+/// The container is the decisive half: Chrome refuses `video/x-matroska` even
+/// when the codec inside (H.264) would otherwise be fine. HEVC is only reliable
+/// on platforms with hardware support, so it is treated as not playable and
+/// served through a proxy — which also covers the 10-bit and 4:2:2 variants that
+/// browsers reject outright.
+fn browser_playable(ext: &str, codec: Option<&str>) -> bool {
+    let codec = codec.unwrap_or("");
+    match ext {
+        "mp4" | "m4v" | "mov" => matches!(codec, "h264" | "av1"),
+        "webm" => matches!(codec, "vp8" | "vp9" | "av1"),
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod playable_tests {
+    use super::browser_playable;
+
+    #[test]
+    fn containers_decide_as_much_as_codecs() {
+        assert!(browser_playable("mp4", Some("h264")));
+        assert!(browser_playable("webm", Some("vp9")));
+        // Matroska is refused by browsers even with a playable codec inside.
+        assert!(!browser_playable("mkv", Some("h264")));
+        // HEVC needs hardware support the browser cannot be assumed to have.
+        assert!(!browser_playable("mp4", Some("hevc")));
+        assert!(!browser_playable("avi", Some("mpeg4")));
+    }
 }
 
 /// An MP3 with an embedded cover, or any file whose only video streams are

@@ -851,6 +851,7 @@ mod tests {
             size_bytes: 1024,
             thumbnail_path: None,
             waveform: None,
+            browser_playable: true,
         }
     }
 

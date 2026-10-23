@@ -7,6 +7,8 @@
 #
 #   bash tools/demo.sh
 #   VIDEO_A=/chemin/a.mp4 VIDEO_B=/chemin/b.mp4 bash tools/demo.sh
+#   MKV=/chemin/film.mkv bash tools/demo.sh      # ajoute un média non lisible
+#                                                # par le navigateur (proxy)
 set -euo pipefail
 
 API=${API:-http://127.0.0.1:8730}
@@ -70,16 +72,19 @@ post /api/clip/update "{\"clip_id\":\"$C2\",\"opacity\":0.95,\"volume\":0.4,
 echo "→ piste de texte"
 post /api/clip/text '{"content":"Démo Velocis","timeline_start":600000,"duration":3000000,"font_size":96}' >/dev/null
 
-echo "→ aperçu"
-JOB=$(post /api/preview '{"height":540}' | jq_get "d['id']")
-STATUS=running
-for _ in $(seq 1 120); do
-  STATUS=$(curl -sf "$API/api/jobs/$JOB" | jq_get "d['status']")
-  [[ "$STATUS" == "running" ]] || break
-  sleep 1
-done
-echo "   aperçu : $STATUS"
+if [[ -n "${MKV:-}" ]]; then
+  echo "→ média que le navigateur ne sait pas décoder (proxy à la demande)"
+  AM=$(post /api/import "{\"paths\":[\"$MKV\"]}" | jq_get "d['imported'][0]['id']")
+  curl -sf "$API/api/state" | python3 -c "
+import sys, json
+a = [x for x in json.load(sys.stdin)['project']['assets'] if x['id'] == '$AM'][0]
+print('   ', a['name'], '|', round(a['duration']/1e6/60, 1), 'min |',
+      a['video_codec'], '| lisible par le navigateur :', a['browser_playable'])
+"
+  post /api/clip/place "{\"track_id\":\"$T1\",\"asset_id\":\"$AM\",\"timeline_start\":7000000,\"source_start\":60000000,\"source_duration\":10000000}" >/dev/null
+fi
 
+echo "→ projet prêt : l'aperçu est composé en direct, rien à préparer"
 curl -sf "$API/api/state" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)['project']

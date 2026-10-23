@@ -56,6 +56,8 @@ pub struct Capabilities {
     pub qualities: Vec<&'static str>,
     pub heights: Vec<u32>,
     pub aspects: Vec<&'static str>,
+    /// Length of a preview proxy segment, so the client never hardcodes it.
+    pub proxy_segment_seconds: u32,
 }
 
 pub async fn capabilities() -> ApiResult<Capabilities> {
@@ -67,6 +69,7 @@ pub async fn capabilities() -> ApiResult<Capabilities> {
         qualities: vec!["draft", "standard", "high", "best"],
         heights: vec![480, 720, 1080, 2160],
         aspects: vec!["landscape16x9", "portrait9x16", "square1x1", "portrait4x5"],
+        proxy_segment_seconds: crate::state::PROXY_SEGMENT_SECONDS,
     }))
 }
 
@@ -895,6 +898,73 @@ pub async fn asset_media(
         )
             .into_response(),
     }
+}
+
+#[derive(Deserialize)]
+pub struct ProxyRequest {
+    pub asset_id: String,
+    /// Index of the segment on the source timeline.
+    pub index: i64,
+}
+
+/// Produce the preview segment covering one slice of a non-playable asset.
+///
+/// The client asks for the slice it is about to show, so scrubbing through a
+/// four-hour Matroska file never requires transcoding the whole thing.
+pub async fn proxy_segment(State(app): AppState, Json(body): Json<ProxyRequest>) -> ApiResult<Job> {
+    let asset = app
+        .project()
+        .asset(&body.asset_id)
+        .cloned()
+        .ok_or_else(|| ApiError(anyhow::anyhow!("média introuvable")))?;
+    if asset.browser_playable {
+        return Err(ApiError(anyhow::anyhow!(
+            "ce média se lit directement : aucun proxy nécessaire"
+        )));
+    }
+
+    let id = uuid_like();
+    let job = Job {
+        id: id.clone(),
+        kind: "proxy".into(),
+        status: JobStatus::Running,
+        progress: 0.2,
+        message: "Préparation du segment".into(),
+        output: None,
+        bytes: None,
+        encoder: None,
+        elapsed: None,
+    };
+    app.register(&id, job.clone(), Arc::new(AtomicBool::new(false)));
+
+    let app2 = app.clone();
+    let id2 = id.clone();
+    let index = body.index;
+    tokio::task::spawn_blocking(move || {
+        match crate::state::ensure_proxy_segment(&app2, &asset, index) {
+            Ok(path) => {
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+                app2.update_job(&id2, |job| {
+                    job.status = JobStatus::Done;
+                    job.progress = 1.0;
+                    job.message = "Segment prêt".into();
+                    job.output = Some(format!("/media/proxy/{name}"));
+                    job.bytes = Some(bytes);
+                });
+            }
+            Err(error) => app2.update_job(&id2, |job| {
+                job.status = JobStatus::Failed;
+                job.message = error.to_string();
+            }),
+        }
+        app2.clear_cancel(&id2);
+    });
+
+    Ok(Json(job))
 }
 
 pub async fn job(State(app): AppState, Path(id): Path<String>) -> ApiResult<Job> {

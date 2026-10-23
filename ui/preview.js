@@ -19,12 +19,16 @@ const US = 1e6;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 export class LivePreview {
-  constructor(canvas, { onTime, onBlocked } = {}) {
+  constructor(canvas, { onTime, onBlocked, onNeedProxy, segmentSeconds } = {}) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d", { alpha: false });
     this.onTime = onTime ?? (() => {});
     this.onBlocked = onBlocked ?? null;
     this.blocked = false;
+    this.onNeedProxy = onNeedProxy ?? null;
+    this.segmentSeconds = segmentSeconds ?? 15;
+    this.proxy = new Map();      // assetId -> { index, url, loading }
+    this.proxyUrls = new Map();  // "assetId:index" -> url
     this.project = null;
     this.videos = new Map();
     this.images = new Map();
@@ -92,12 +96,22 @@ export class LivePreview {
       el.preload = "auto";
       el.playsInline = true;
       el.muted = false;
-      el.src = `/api/media/${id}`;
+      // Non-playable sources get their `src` from a proxy segment instead.
+      if (asset.browser_playable !== false) el.src = `/api/media/${id}`;
       el.style.cssText = "position:absolute;width:1px;height:1px;opacity:0;pointer-events:none";
       document.body.appendChild(el);
       // A seek or a freshly decoded frame must repaint even when paused.
       el.addEventListener("seeked", () => this.requestDraw());
-      el.addEventListener("loadeddata", () => this.requestDraw());
+      // Metadata arriving is also the moment a pending `currentTime` becomes
+      // writable: setting it before the element knows its duration is ignored,
+      // which silently shows the first frame of a proxy segment instead of the
+      // frame the playhead is on.
+      const resync = () => {
+        this.syncPlayback(this.time);
+        this.requestDraw();
+      };
+      el.addEventListener("loadedmetadata", resync);
+      el.addEventListener("loadeddata", resync);
       this.videos.set(id, el);
     }
   }
@@ -233,7 +247,22 @@ export class LivePreview {
       if (!asset || asset.kind === "image") continue;
       const el = this.videos.get(clip.asset_id);
       if (!el) continue;
-      active.set(clip.asset_id, { el, clip, track });
+
+      let offset = 0;
+      if (asset.browser_playable === false) {
+        // The browser cannot decode this source: play the proxy segment that
+        // covers the current instant, and treat its start as time zero.
+        const source = this.sourceTime(clip, t);
+        const bucket = Math.max(0, Math.floor(source / this.segmentSeconds));
+        offset = bucket * this.segmentSeconds;
+        const state = this.proxy.get(clip.asset_id);
+        if (!state || state.index !== bucket) {
+          this.requestSegment(asset, bucket);
+          continue;
+        }
+        if (!state.url) continue; // still being prepared
+      }
+      active.set(clip.asset_id, { el, clip, track, offset });
     }
 
     for (const [id, el] of this.videos) {
@@ -242,14 +271,17 @@ export class LivePreview {
         if (!el.paused) el.pause();
         continue;
       }
-      const { clip, track } = entry;
-      const expected = this.sourceTime(clip, t);
+      const { clip, track, offset } = entry;
+      const expected = this.sourceTime(clip, t) - offset;
       el.volume = clamp(track.muted ? 0 : clip.volume, 0, 1);
 
       if (this.playing) {
         // Correct drift only when it is audible/visible, otherwise the element
         // would seek constantly and never play smoothly.
         if (Math.abs(el.currentTime - expected) > 0.3) el.currentTime = expected;
+        if (this.sourceTime(clip, t) - offset > this.segmentSeconds - 3) {
+          this.prefetchNext(clip.asset_id, this.sourceTime(clip, t));
+        }
         if (el.paused) {
           const attempt = el.play();
           if (attempt?.catch) {
@@ -267,6 +299,52 @@ export class LivePreview {
         if (!el.paused) el.pause();
       }
     }
+  }
+
+  /** Ask for the proxy segment that covers `bucket`, once. */
+  requestSegment(asset, bucket) {
+    const key = `${asset.id}:${bucket}`;
+    if (this.proxyUrls.has(key)) {
+      const url = this.proxyUrls.get(key);
+      this.proxy.set(asset.id, { index: bucket, url });
+      const el = this.videos.get(asset.id);
+      if (el && el.dataset.proxyKey !== key) {
+        el.dataset.proxyKey = key;
+        el.src = url;
+      }
+      return;
+    }
+    const state = this.proxy.get(asset.id);
+    if (state?.loading) return;
+    this.proxy.set(asset.id, { index: bucket, loading: true });
+    Promise.resolve(this.onNeedProxy?.(asset.id, bucket))
+      .then((url) => {
+        if (!url) throw new Error("segment indisponible");
+        this.proxyUrls.set(key, url);
+        const el = this.videos.get(asset.id);
+        if (el) {
+          el.dataset.proxyKey = key;
+          el.src = url;
+        }
+        this.proxy.set(asset.id, { index: bucket, url });
+        this.requestDraw();
+      })
+      .catch(() => {
+        this.proxy.set(asset.id, { index: bucket, error: true });
+      });
+  }
+
+  /** Prefetch the next segment before playback reaches the edge. */
+  prefetchNext(assetId, sourceSeconds) {
+    const bucket = Math.floor(sourceSeconds / this.segmentSeconds) + 1;
+    if (!this.onNeedProxy) return;
+    const key = `${assetId}:${bucket}`;
+    if (this.proxyUrls.has(key)) return;
+    Promise.resolve(this.onNeedProxy(assetId, bucket))
+      .then((url) => {
+        if (url) this.proxyUrls.set(key, url);
+      })
+      .catch(() => {});
   }
 
   /* ------------------------------------------------------------------- draw */
