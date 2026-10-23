@@ -1,7 +1,7 @@
 //! HTTP handlers. Thin: translate a request, call the engine, return a snapshot.
 
 use crate::state::{App, ExportReportLite, Job, JobStatus, Snapshot};
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -227,6 +227,9 @@ pub struct ImportResult {
     pub imported: Vec<MediaAsset>,
     pub failed: Vec<FailedImport>,
     pub session: crate::state::SessionInfo,
+    /// Preparation jobs started for the imported media, so the client can show
+    /// progress instead of wondering why the first scrub is slow.
+    pub prepare_jobs: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -241,6 +244,7 @@ pub async fn import(
 ) -> ApiResult<ImportResult> {
     let mut imported = Vec::new();
     let mut failed = Vec::new();
+    let mut prepare_jobs = Vec::new();
     for raw in body.paths {
         let path = PathBuf::from(&raw);
         match crate::state::import_file(&app, &path) {
@@ -252,6 +256,10 @@ pub async fn import(
                     ops::import_asset(p, asset_for_project);
                     Ok(())
                 })?;
+                let job = spawn_prepare(&app, &asset);
+                if job.status == JobStatus::Running {
+                    prepare_jobs.push(job.id);
+                }
                 imported.push(asset);
             }
             Err(err) => failed.push(FailedImport {
@@ -265,6 +273,7 @@ pub async fn import(
         imported,
         failed,
         session: crate::state::session_info(&editor),
+        prepare_jobs,
     }))
 }
 
@@ -313,11 +322,18 @@ pub async fn upload(
                 ops::import_asset(p, asset_for_project);
                 Ok(())
             })?;
+            let job = spawn_prepare(&app, &asset);
+            let prepare_jobs = if job.status == JobStatus::Running {
+                vec![job.id]
+            } else {
+                Vec::new()
+            };
             let editor = app.editor.lock().unwrap();
             Ok(Json(ImportResult {
                 imported: vec![asset],
                 failed: Vec::new(),
                 session: crate::state::session_info(&editor),
+                prepare_jobs,
             }))
         }
         Err(err) => {
@@ -878,15 +894,32 @@ pub async fn export(State(app): AppState, Json(body): Json<ExportRequest>) -> Ap
 /// and without range support scrubbing a large file either stalls or replays
 /// from the start. `ServeFile` handles ranges, conditional requests and MIME
 /// types, so the service only has to resolve the asset id to a path.
+#[derive(Deserialize)]
+pub struct MediaQuery {
+    /// `preview` serves the prepared proxy instead of the original.
+    #[serde(default)]
+    variant: Option<String>,
+}
+
 pub async fn asset_media(
     State(app): AppState,
     Path(id): Path<String>,
+    Query(query): Query<MediaQuery>,
     request: axum::extract::Request,
 ) -> Response {
     let Some(asset) = app.project().asset(&id).cloned() else {
         return (StatusCode::NOT_FOUND, "média introuvable").into_response();
     };
-    let path = PathBuf::from(&asset.path);
+    let path = if query.variant.as_deref() == Some("preview") {
+        asset
+            .preview_path
+            .as_ref()
+            .map(PathBuf::from)
+            .filter(|p| p.is_file())
+            .unwrap_or_else(|| PathBuf::from(&asset.path))
+    } else {
+        PathBuf::from(&asset.path)
+    };
     if !path.is_file() {
         return (StatusCode::NOT_FOUND, "fichier absent").into_response();
     }
@@ -898,6 +931,105 @@ pub async fn asset_media(
         )
             .into_response(),
     }
+}
+
+#[derive(Deserialize)]
+pub struct PrepareRequest {
+    pub asset_id: String,
+}
+
+/// Prepare a seek-friendly preview proxy for one asset.
+///
+/// This is the "processing" step an editor does on import: transcoding to a
+/// short keyframe interval is what makes scrubbing instant afterwards. It is a
+/// cache, so it never enters the undo history, and the export keeps reading the
+/// original file.
+pub async fn prepare(State(app): AppState, Json(body): Json<PrepareRequest>) -> ApiResult<Job> {
+    let asset = app
+        .project()
+        .asset(&body.asset_id)
+        .cloned()
+        .ok_or_else(|| ApiError(anyhow::anyhow!("média introuvable")))?;
+    Ok(Json(spawn_prepare(&app, &asset)))
+}
+
+/// Start the preparation job for one asset, or report that nothing is needed.
+///
+/// Called automatically on import: an editor is expected to spend a moment
+/// preparing media so that every later scrub is instant.
+fn spawn_prepare(app: &Arc<App>, asset: &MediaAsset) -> Job {
+    // Reuse an in-flight preparation for the same asset.
+    if let Some(job_id) = app.preparing.lock().unwrap().get(&asset.id).cloned() {
+        if let Some(job) = app.job(&job_id) {
+            if job.status == JobStatus::Running {
+                return job;
+            }
+        }
+    }
+    let already = asset
+        .preview_path
+        .as_ref()
+        .map(|path| PathBuf::from(path).is_file())
+        .unwrap_or(false);
+    let needed = crate::state::should_prepare_preview(asset) && !already;
+
+    let id = uuid_like();
+    let job = Job {
+        id: id.clone(),
+        kind: "prepare".into(),
+        status: if needed {
+            JobStatus::Running
+        } else {
+            JobStatus::Done
+        },
+        progress: if needed { 0.0 } else { 1.0 },
+        message: if needed {
+            "Préparation de l'aperçu".into()
+        } else {
+            "Aucune préparation nécessaire".into()
+        },
+        output: None,
+        bytes: None,
+        encoder: None,
+        elapsed: None,
+    };
+    app.register(&id, job.clone(), Arc::new(AtomicBool::new(false)));
+    if !needed {
+        return job;
+    }
+
+    app.preparing
+        .lock()
+        .unwrap()
+        .insert(asset.id.clone(), id.clone());
+
+    let app2 = app.clone();
+    let id2 = id.clone();
+    let asset = asset.clone();
+    tokio::task::spawn_blocking(move || {
+        let result = crate::state::ensure_preview_proxy(&app2, &asset, &mut |ratio| {
+            app2.update_job(&id2, |job| job.progress = ratio);
+        });
+        match result {
+            Ok(path) => {
+                let bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+                app2.set_preview_path(&asset.id, &path);
+                app2.update_job(&id2, |job| {
+                    job.status = JobStatus::Done;
+                    job.progress = 1.0;
+                    job.message = "Aperçu prêt".into();
+                    job.bytes = Some(bytes);
+                });
+            }
+            Err(error) => app2.update_job(&id2, |job| {
+                job.status = JobStatus::Failed;
+                job.message = error.to_string();
+            }),
+        }
+        app2.clear_cancel(&id2);
+        app2.preparing.lock().unwrap().remove(&asset.id);
+    });
+    job
 }
 
 #[derive(Deserialize)]

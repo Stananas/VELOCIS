@@ -140,6 +140,15 @@ Quatre points méritent d'être connus :
   en silence.
 - **La dérive se corrige avec un seuil.** Recaler une vidéo en continu la ferait
   saccader ; on ne la recale que si l'écart dépasse 0,3 s.
+- **Le média est préparé à l'import.** Un scrub sur un fichier source ordinaire
+  décode depuis la keyframe précédente, parfois huit secondes en arrière. Un proxy
+  à keyframe toutes les 12 images ramène ce coût à quelques images : mesuré 32 ms
+  contre 46 ms sur la source d'origine, et plus aucune image noire. L'export
+  ignore ce proxy et lit l'original.
+- **Les fichiers que le navigateur ne sait pas décoder** (Matroska, HEVC) passent
+  par des segments de 15 s générés à la demande, eux aussi à keyframes
+  rapprochées. Au-delà de 20 minutes, c'est le seul mode : préparer quatre heures
+  de proxy coûterait plus qu'il ne rapporte.
 - **Les effets sont honnêtement approximés.** Luminosité, contraste, saturation,
   teinte, flou, noir et blanc, sépia et inversion passent par les filtres canvas
   et sont fidèles ; gamma et température sont approchés ; netteté et incrustation
@@ -150,6 +159,10 @@ cadrage dans les deux moteurs, parce qu'ils appliquent la même règle de
 « contain puis échelle ».
 
 ## Côté interface
+
+**Seule la règle déplace le curseur.** Cliquer dans une piste vide déselectionne,
+mais ne saute plus dans le temps : un clic mal placé ne doit pas faire perdre sa
+position de lecture.
 
 **Ne jamais reconstruire la timeline pendant un glisser.** Remplacer le nœud
 qu'on déplace le détache du document, et les événements de pointeur cessent de

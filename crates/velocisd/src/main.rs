@@ -128,6 +128,7 @@ async fn main() -> Result<()> {
         .route("/api/preview", post(api::preview))
         .route("/api/export", post(api::export))
         .route("/api/proxy", post(api::proxy_segment))
+        .route("/api/prepare", post(api::prepare))
         .route("/api/jobs/{id}", get(api::job))
         .route("/api/jobs/{id}/cancel", post(api::cancel_job))
         .nest_service("/media", ServeDir::new(app.media_dir.clone()))

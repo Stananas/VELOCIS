@@ -850,6 +850,7 @@ mod tests {
             audio_sample_rate: 48000,
             size_bytes: 1024,
             thumbnail_path: None,
+            preview_path: None,
             waveform: None,
             browser_playable: true,
         }

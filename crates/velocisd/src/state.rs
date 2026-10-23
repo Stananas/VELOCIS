@@ -59,6 +59,10 @@ pub struct App {
     pub editor: Mutex<Editor>,
     pub jobs: Mutex<HashMap<String, Job>>,
     pub cancels: Mutex<HashMap<String, Arc<AtomicBool>>>,
+    /// Assets whose preview proxy is currently being built, mapped to the job
+    /// doing it. Without this, two callers would transcode the same file twice
+    /// into the same output path.
+    pub preparing: Mutex<HashMap<String, String>>,
     /// Where the project lives on disk, once it has been saved or opened.
     pub project_path: Mutex<Option<PathBuf>>,
     /// Root for generated media (thumbnails, previews, exports).
@@ -99,6 +103,7 @@ impl App {
             editor: Mutex::new(Editor::new(project)),
             jobs: Mutex::new(HashMap::new()),
             cancels: Mutex::new(HashMap::new()),
+            preparing: Mutex::new(HashMap::new()),
             project_path: Mutex::new(None),
             media_dir,
             preview_path,
@@ -133,6 +138,19 @@ impl App {
         let result = editor.apply(label, f)?;
         self.persist(&editor.project);
         Ok(result)
+    }
+
+    /// Record a derived artifact (a prepared preview) without an undo entry: it
+    /// is a cache, not an edit the user made.
+    pub fn set_preview_path(&self, asset_id: &str, path: &Path) {
+        let mut editor = self.editor.lock().unwrap();
+        let _ = editor.apply_transient(|project| {
+            if let Some(asset) = project.assets.iter_mut().find(|a| a.id == asset_id) {
+                asset.preview_path = Some(path.to_string_lossy().into_owned());
+            }
+            Ok(())
+        });
+        self.persist(&editor.project);
     }
 
     pub fn undo(&self) -> bool {
@@ -310,6 +328,97 @@ pub fn render_export(
     })
 }
 
+/// Above this length, preparing a whole preview proxy costs more than it saves,
+/// and the segmented path takes over.
+const PREVIEW_MAX_MINUTES: i64 = 20;
+const PREVIEW_HEIGHT: u32 = 540;
+/// Keyframe interval for preview proxies, in frames. At 30 fps this is one every
+/// 0.4 s: a seek never has to decode more than a dozen frames.
+const PREVIEW_GOP: u32 = 12;
+
+/// Does this asset benefit from a prepared preview proxy?
+pub fn should_prepare_preview(asset: &MediaAsset) -> bool {
+    asset.kind == AssetKind::Video
+        && asset.duration > 0
+        && asset.duration <= PREVIEW_MAX_MINUTES * 60 * ONE_SECOND
+}
+
+fn preview_path(app: &App, asset: &MediaAsset) -> PathBuf {
+    let stem = format!("{:016x}", hash_string(&asset.path));
+    app.media_dir.join("preview").join(format!("{stem}.mp4"))
+}
+
+/// Transcode a seek-friendly proxy for the live preview.
+///
+/// The export never uses it: it reads the original, so quality is unaffected.
+pub fn ensure_preview_proxy(
+    app: &App,
+    asset: &MediaAsset,
+    on_progress: &mut dyn FnMut(f64),
+) -> anyhow::Result<PathBuf> {
+    let output = preview_path(app, asset);
+    if let Ok(meta) = std::fs::metadata(&output) {
+        if meta.len() > 0 {
+            return Ok(output);
+        }
+    }
+    if let Some(parent) = output.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let mut command = std::process::Command::new(velocis_engine::probe::ffmpeg_bin());
+    command.args(["-hide_banner", "-loglevel", "error", "-y"]);
+    command.args(["-progress", "pipe:1", "-nostats"]);
+    command.stdout(std::process::Stdio::piped());
+    command.arg("-i").arg(&asset.path);
+    command.args(["-sn", "-dn"]);
+    command.args(["-vf", &format!("scale=-2:{PREVIEW_HEIGHT}")]);
+    command.args(["-c:v", "libx264", "-preset", "veryfast", "-crf", "27"]);
+    command.args([
+        "-g",
+        &PREVIEW_GOP.to_string(),
+        "-keyint_min",
+        &PREVIEW_GOP.to_string(),
+        // Without this, x264 inserts extra keyframes on scene cuts; keeping the
+        // interval uniform makes seek cost predictable.
+        "-sc_threshold",
+        "0",
+    ]);
+    command.args(["-pix_fmt", "yuv420p"]);
+    if asset.audio_codec.is_some() {
+        command.args(["-c:a", "aac", "-b:a", "96k", "-ac", "2"]);
+    } else {
+        command.arg("-an");
+    }
+    command.args(["-movflags", "+faststart"]);
+    command.arg(&output);
+
+    let mut child = command
+        .spawn()
+        .map_err(|error| anyhow::anyhow!("lancement de ffmpeg impossible : {error}"))?;
+    if let Some(stdout) = child.stdout.take() {
+        let total = asset.duration.max(1) as f64;
+        for line in std::io::BufRead::lines(std::io::BufReader::new(stdout)).map_while(Result::ok) {
+            if let Some(value) = line.strip_prefix("out_time_us=") {
+                if let Ok(micros) = value.trim().parse::<i64>() {
+                    on_progress((micros as f64 / total).clamp(0.0, 1.0));
+                }
+            }
+        }
+    }
+    let status = child.wait()?;
+    if !status.success() {
+        let _ = std::fs::remove_file(&output);
+        anyhow::bail!("préparation de l'aperçu échouée");
+    }
+    if std::fs::metadata(&output).map(|m| m.len()).unwrap_or(0) == 0 {
+        let _ = std::fs::remove_file(&output);
+        anyhow::bail!("le proxy d'aperçu généré est vide");
+    }
+    on_progress(1.0);
+    Ok(output)
+}
+
 /// Length of one proxy segment.
 ///
 /// Short enough that generating one is a few seconds of work, long enough that
@@ -367,6 +476,16 @@ pub fn ensure_proxy_segment(app: &App, asset: &MediaAsset, index: i64) -> anyhow
     command.args(["-sn", "-dn"]);
     command.args(["-vf", &proxy_scale_filter()]);
     command.args(["-c:v", "libx264", "-preset", "veryfast", "-crf", "26"]);
+    // Same short keyframe interval as prepared previews: scrubbing inside a
+    // segment must be instant, not decode eight seconds of frames.
+    command.args([
+        "-g",
+        &PREVIEW_GOP.to_string(),
+        "-keyint_min",
+        &PREVIEW_GOP.to_string(),
+        "-sc_threshold",
+        "0",
+    ]);
     command.args(["-pix_fmt", "yuv420p", "-r", "30"]);
     if asset.audio_codec.is_some() {
         command.args(["-c:a", "aac", "-b:a", "96k", "-ac", "2"]);

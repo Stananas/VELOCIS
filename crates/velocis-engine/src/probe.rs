@@ -190,6 +190,7 @@ pub fn probe(path: &Path) -> Result<MediaAsset> {
             .unwrap_or(0),
         size_bytes,
         thumbnail_path: None,
+        preview_path: None,
         waveform: None,
         browser_playable: browser_playable(&ext, video.and_then(|s| s.codec_name.as_deref())),
     })

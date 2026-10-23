@@ -284,8 +284,12 @@ async function importFiles(files) {
       const buf = await file.arrayBuffer();
       return request("POST", "/api/upload", buf, true, file.name);
     });
-    if (result?.imported?.length) last = result.imported[0];
-    else if (result?.failed?.length) toast(result.failed[0].error, "error");
+    if (result?.imported?.length) {
+      last = result.imported[0];
+      // Preparation runs in the background; following it here is what turns the
+      // first slow scrub into an instant one.
+      followPreparation(result.imported[0], result.prepare_jobs);
+    } else if (result?.failed?.length) toast(result.failed[0].error, "error");
   }
   await refresh();
   if (files.length === 1) {
@@ -421,6 +425,41 @@ async function ensureProxy(assetId, index) {
       if (proxyPending === 0) setLiveLabel("Composition en direct");
     });
   return promise;
+}
+
+/** A toast that stays up while work is in progress, then disappears. */
+function progressToast(initial) {
+  const host = $("toasts");
+  const node = document.createElement("div");
+  node.className = "toast";
+  node.innerHTML = `<span class="dot"></span><span class="msg"></span>`;
+  const label = node.querySelector(".msg");
+  label.textContent = initial;
+  host.appendChild(node);
+  return {
+    update(text) {
+      label.textContent = text;
+    },
+    close() {
+      node.remove();
+    },
+  };
+}
+
+/** Follow the preparation jobs started by an import, and refresh when they land. */
+async function followPreparation(asset, jobIds) {
+  if (!jobIds?.length) return;
+  const toast = progressToast(`Préparation de « ${asset.name} »…`);
+  let changed = false;
+  for (const id of jobIds) {
+    const result = await pollJob(id, (progress) => {
+      toast.update(`Préparation de « ${asset.name} »… ${Math.round(progress * 100)} %`);
+    });
+    if (result?.status === "done") changed = true;
+    else if (result) toast.update(result.message);
+  }
+  toast.close();
+  if (changed) await refresh();
 }
 
 /** The service writes thumbnails inside its media directory. */
@@ -1456,9 +1495,8 @@ function bindEvents() {
 
     const clipEl = e.target.closest(".clip");
     if (!clipEl) {
-      // Clicking empty track space moves the playhead: it is the fastest way to
-      // inspect a moment, and it means a click never does nothing.
-      setPlayhead(timeFromPoint(e.clientX));
+      // Only the ruler moves the playhead. Clicking a lane used to seek too, but
+      // it made every stray click jump the timeline: deselecting is enough.
       S.selection = null;
       renderTimeline();
       renderInspector();

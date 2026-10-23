@@ -96,8 +96,6 @@ export class LivePreview {
       el.preload = "auto";
       el.playsInline = true;
       el.muted = false;
-      // Non-playable sources get their `src` from a proxy segment instead.
-      if (asset.browser_playable !== false) el.src = `/api/media/${id}`;
       el.style.cssText = "position:absolute;width:1px;height:1px;opacity:0;pointer-events:none";
       document.body.appendChild(el);
       // A seek or a freshly decoded frame must repaint even when paused.
@@ -108,12 +106,45 @@ export class LivePreview {
       // frame the playhead is on.
       const resync = () => {
         this.syncPlayback(this.time);
+        // Paint on the next animation frame: drawing straight from `seeked` can
+        // run before the new frame is presented, which paints the old one again
+        // and actually makes scrubbing feel slower.
         this.requestDraw();
       };
       el.addEventListener("loadedmetadata", resync);
       el.addEventListener("loadeddata", resync);
       this.videos.set(id, el);
+      this.applySource(id, asset, el);
     }
+
+    // A prepared proxy may have appeared since the element was created.
+    for (const [id, asset] of assets) {
+      const el = this.videos.get(id);
+      if (el) this.applySource(id, asset, el);
+    }
+  }
+
+  /// Choose what this asset should be decoded from:
+  ///  * a prepared preview proxy (seek-friendly) when one exists;
+  ///  * short segments when the browser cannot decode the file at all;
+  ///  * the original otherwise.
+  applySource(assetId, asset, el) {
+    const variant = asset.preview_path
+      ? "preview"
+      : asset.browser_playable === false
+      ? "segments"
+      : "original";
+    if (el.dataset.variant === variant) return;
+    el.dataset.variant = variant;
+    this.proxy.delete(assetId);
+    if (variant === "segments") {
+      el.removeAttribute("src");
+      return;
+    }
+    el.src =
+      variant === "preview"
+        ? `/api/media/${assetId}?variant=preview`
+        : `/api/media/${assetId}`;
   }
 
   /* ----------------------------------------------------------------- canvas */
@@ -211,8 +242,16 @@ export class LivePreview {
       this.wallStart = performance.now();
       this.timeStart = this.time;
     }
-    this.syncPlayback(this.time);
-    this.requestDraw();
+    // A pointer can move faster than the display refreshes. Seeking on every
+    // event floods the decoder with targets it will never show, so the request
+    // is coalesced to one per frame.
+    if (this.seekScheduled) return;
+    this.seekScheduled = true;
+    requestAnimationFrame(() => {
+      this.seekScheduled = false;
+      this.syncPlayback(this.time);
+      this.requestDraw();
+    });
   }
 
   /* ------------------------------------------------------------- media sync */
@@ -249,7 +288,7 @@ export class LivePreview {
       if (!el) continue;
 
       let offset = 0;
-      if (asset.browser_playable === false) {
+      if (asset.browser_playable === false && !asset.preview_path) {
         // The browser cannot decode this source: play the proxy segment that
         // covers the current instant, and treat its start as time zero.
         const source = this.sourceTime(clip, t);
@@ -295,7 +334,9 @@ export class LivePreview {
           }
         }
       } else {
-        if (Math.abs(el.currentTime - expected) > 0.02) el.currentTime = expected;
+        // Half a frame at 30 fps: below that the element is already showing the
+        // frame we would ask for.
+        if (Math.abs(el.currentTime - expected) > 0.017) el.currentTime = expected;
         if (!el.paused) el.pause();
       }
     }
@@ -357,13 +398,26 @@ export class LivePreview {
     const sy = this.canvas.height / height;
     const t = this.time;
 
+    const visible = this.visibleClips(t);
+
+    // If a video frame is still being decoded, keep the previous composite on
+    // screen. Clearing first would flash the background for one or two frames,
+    // which is exactly what makes scrubbing feel broken.
+    for (const { clip } of visible) {
+      if (clip.text) continue;
+      const asset = this.project.assets.find((a) => a.id === clip.asset_id);
+      if (!asset || asset.kind === "image") continue;
+      const media = this.videos.get(asset.id);
+      if (media && media.readyState < 2) return;
+    }
+
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = rgba(this.project.canvas.background);
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     ctx.restore();
 
-    for (const { clip, track } of this.visibleClips(t)) {
+    for (const { clip, track } of visible) {
       const alpha = this.clipAlpha(clip, t);
       if (alpha <= 0.001) continue;
       if (clip.text) this.drawText(clip, alpha, sx);

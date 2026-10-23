@@ -84,7 +84,20 @@ print('   ', a['name'], '|', round(a['duration']/1e6/60, 1), 'min |',
   post /api/clip/place "{\"track_id\":\"$T1\",\"asset_id\":\"$AM\",\"timeline_start\":7000000,\"source_start\":60000000,\"source_duration\":10000000}" >/dev/null
 fi
 
-echo "→ projet prêt : l'aperçu est composé en direct, rien à préparer"
+echo "→ préparation des aperçus (keyframes rapprochées, pour un scrub fluide)"
+for _ in $(seq 1 60); do
+  MISSING=$(curl -sf "$API/api/state" | python3 -c "
+import sys, json
+assets = json.load(sys.stdin)['project']['assets']
+print(sum(1 for a in assets
+          if a['kind'] == 'video' and a['duration'] <= 20 * 60 * 1e6 and not a.get('preview_path')))
+")
+  [[ "$MISSING" == "0" ]] && break
+  sleep 1
+done
+echo "   $MISSING média(s) encore en préparation"
+
+echo "→ projet prêt : l'aperçu est composé en direct"
 curl -sf "$API/api/state" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)['project']

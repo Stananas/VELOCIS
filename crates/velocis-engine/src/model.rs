@@ -420,6 +420,13 @@ pub struct MediaAsset {
     /// Cache keys for generated derivatives.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thumbnail_path: Option<String>,
+    /// Seek-friendly proxy prepared for the live preview.
+    ///
+    /// Source files often carry keyframes several seconds apart, which makes
+    /// scrubbing decode from the previous keyframe every time. A proxy with a
+    /// keyframe every 12 frames turns that into an instant seek.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub waveform: Option<Waveform>,
     /// Whether a browser can decode this file directly.
