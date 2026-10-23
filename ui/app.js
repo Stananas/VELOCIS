@@ -846,6 +846,18 @@ function hideSnapLine() {
   if (line) line.hidden = true;
 }
 
+/** Highlight the lane a dragged clip would land on. */
+function highlightLane(trackId) {
+  for (const lane of document.querySelectorAll(".track-lane")) {
+    if (trackId && lane.dataset.lane === trackId) lane.dataset.drop = "true";
+    else delete lane.dataset.drop;
+  }
+}
+
+function clearLaneHighlight() {
+  for (const lane of document.querySelectorAll(".track-lane")) delete lane.dataset.drop;
+}
+
 function laneFromPoint(clientY) {
   const lanes = [...document.querySelectorAll(".track-lane")];
   for (const lane of lanes) {
@@ -924,6 +936,7 @@ function updateClipDrag(event) {
       const asset = assetOf(drag.origin);
       if (target && compatibleTrack(target, asset, drag.isText)) drag.targetTrack = lane;
     }
+    highlightLane(drag.targetTrack === drag.trackId ? null : drag.targetTrack);
     return;
   }
 
@@ -960,6 +973,7 @@ async function endClipDrag() {
   const drag = S.drag;
   S.drag = null;
   hideSnapLine();
+  clearLaneHighlight();
   if (!drag) return;
   if (!drag.moved) return;
 
