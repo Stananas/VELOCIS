@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use tower_http::services::ServeFile;
 use velocis_engine::export::{self, Container, Quality};
 use velocis_engine::model::*;
 use velocis_engine::ops;
@@ -866,6 +867,34 @@ pub async fn export(State(app): AppState, Json(body): Json<ExportRequest>) -> Ap
     });
 
     Ok(Json(job))
+}
+
+/// Serve an imported asset's bytes.
+///
+/// Range requests are mandatory here: a browser video element seeks with them,
+/// and without range support scrubbing a large file either stalls or replays
+/// from the start. `ServeFile` handles ranges, conditional requests and MIME
+/// types, so the service only has to resolve the asset id to a path.
+pub async fn asset_media(
+    State(app): AppState,
+    Path(id): Path<String>,
+    request: axum::extract::Request,
+) -> Response {
+    let Some(asset) = app.project().asset(&id).cloned() else {
+        return (StatusCode::NOT_FOUND, "média introuvable").into_response();
+    };
+    let path = PathBuf::from(&asset.path);
+    if !path.is_file() {
+        return (StatusCode::NOT_FOUND, "fichier absent").into_response();
+    }
+    match tower::ServiceExt::oneshot(ServeFile::new(&path), request).await {
+        Ok(response) => response.into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("lecture impossible : {error}"),
+        )
+            .into_response(),
+    }
 }
 
 pub async fn job(State(app): AppState, Path(id): Path<String>) -> ApiResult<Job> {

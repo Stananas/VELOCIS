@@ -133,6 +133,25 @@ try {
       }
     }
     c.close();
+  } else if (cmd === "realclick") {
+    // A trusted click: browsers only grant autoplay and other user-gated
+    // behaviour to real input events, not to element.click().
+    const c = await send("Runtime.evaluate", {}, args[0]);
+    const box = await c.call("Runtime.evaluate", {
+      expression: `(() => { const el = document.querySelector(${JSON.stringify(args[1])}); if (!el) return null;
+        const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`,
+      returnByValue: true,
+    });
+    const point = box.result?.result?.value;
+    if (!point) {
+      console.log("absent");
+    } else {
+      for (const type of ["mousePressed", "mouseReleased"]) {
+        await c.call("Input.dispatchMouseEvent", { type, x: point.x, y: point.y, button: "left", clickCount: 1 });
+      }
+      console.log(`clic système en ${Math.round(point.x)},${Math.round(point.y)}`);
+    }
+    c.close();
   } else if (cmd === "click") {
     const out = await evaluate(
       args[0],

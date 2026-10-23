@@ -110,7 +110,7 @@
         <section class="stage-wrap" aria-label="Aperçu">
           <div class="stage">
             <div class="stage-inner" id="stage-inner">
-              <video id="preview" playsinline preload="auto" hidden></video>
+              <canvas id="stage-canvas" aria-label="Aperçu du montage"></canvas>
               <div class="stage-empty" id="stage-empty"></div>
             </div>
           </div>
@@ -123,10 +123,9 @@
                 <div class="scrub-thumb" id="scrub-thumb" style="left: 0"></div>
               </div>
             </div>
-            <button class="btn" id="btn-preview">
-              <span id="preview-label">Actualiser l'aperçu</span>
-            </button>
-            <span class="hint why" id="preview-state"></span>
+            <span class="live-badge" title="Le montage est composé en direct dans le navigateur">
+              <span class="dot"></span> Composition en direct
+            </span>
           </div>
         </section>
 

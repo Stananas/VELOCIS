@@ -118,6 +118,37 @@ son muxer d'après l'extension et refuse de deviner. Comparer les suffixes ne su
 pas : `test-webm` se termine par `webm` sans avoir d'extension. La comparaison
 porte sur une vraie extension, et un test couvre le cas.
 
+## Aperçu temps réel
+
+L'aperçu ne passe pas par ffmpeg : il est composé dans le navigateur, ce qui rend
+la lecture et les réglages immédiats, tandis que l'export reste confié au moteur
+natif pour l'exactitude.
+
+Le principe est simple et éprouvé : **un `<video>` par source, un `<canvas>` pour
+le résultat, une horloge**. À chaque image, le moteur détermine les clips visibles,
+place chaque source à son temps source, applique la transformation et les effets
+sur le contexte 2D, puis compose dans l'ordre des pistes.
+
+Quatre points méritent d'être connus :
+
+- **Les médias sont servis avec support des requêtes `Range`.** Sans elles, se
+  déplacer dans un fichier volumineux ferait rejouer la vidéo depuis le début.
+- **La lecture doit démarrer dans le geste utilisateur.** Les navigateurs refusent
+  la lecture non muette sans activation ; appeler `play()` depuis la boucle
+  d'animation produit une image figée pendant que l'horloge continue. Le moteur
+  démarre donc les médias depuis le clic, et signale un blocage au lieu d'échouer
+  en silence.
+- **La dérive se corrige avec un seuil.** Recaler une vidéo en continu la ferait
+  saccader ; on ne la recale que si l'écart dépasse 0,3 s.
+- **Les effets sont honnêtement approximés.** Luminosité, contraste, saturation,
+  teinte, flou, noir et blanc, sépia et inversion passent par les filtres canvas
+  et sont fidèles ; gamma et température sont approchés ; netteté et incrustation
+  couleur n'ont pas d'équivalent et ne se voient qu'à l'export.
+
+Le plan de rendu natif reste la source de vérité : le même projet produit le même
+cadrage dans les deux moteurs, parce qu'ils appliquent la même règle de
+« contain puis échelle ».
+
 ## Côté interface
 
 **Ne jamais reconstruire la timeline pendant un glisser.** Remplacer le nœud

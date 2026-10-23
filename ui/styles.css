@@ -55,7 +55,7 @@
   --header-h: 48px;
   --sidebar-w: 320px;
   --inspector-w: 300px;
-  --timeline-h: 300px;
+  --timeline-h: clamp(200px, 34vh, 300px);
   --track-h-video: 60px;
   --track-h-audio: 44px;
 
@@ -533,22 +533,22 @@ textarea {
    is the only layout that behaves at every aspect ratio without the box ever
    overflowing the space available. */
 .stage-inner {
+  position: relative;
   width: 100%;
   height: 100%;
   min-height: 0;
-  background: #000;
-  border-radius: var(--r-lg);
-  overflow: hidden;
-  box-shadow: var(--shadow);
-  position: relative;
+  display: grid;
+  place-items: center;
+  background: transparent;
 }
 
-.stage video {
-  width: 100%;
-  height: 100%;
+/* The canvas is sized in script to the project's aspect ratio, so the stage
+   letterboxes it without any layout guessing. */
+#stage-canvas {
   display: block;
   background: #000;
-  object-fit: contain;
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
 }
 
 .stage-empty {
@@ -1146,7 +1146,8 @@ textarea:focus {
   background: linear-gradient(270deg, rgba(255, 255, 255, 0.22), transparent);
 }
 
-.clip:hover .handle {
+.clip:hover .handle,
+.clip[aria-selected="true"] .handle {
   opacity: 1;
 }
 
@@ -1399,4 +1400,134 @@ textarea:focus {
 .media-card .add svg {
   width: 14px;
   height: 14px;
+}
+
+/* Live-composition indicator: it replaces the old "render the preview" button,
+   so the stage should say what it is doing. */
+.live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
+  font-size: var(--fs-100);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.live-badge .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 0 rgba(61, 220, 151, 0.55);
+  animation: live-pulse 2.4s var(--ease) infinite;
+}
+
+@keyframes live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(61, 220, 151, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(61, 220, 151, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(61, 220, 151, 0);
+  }
+}
+
+/* ----------------------------------------------------------------- timeline feel */
+
+/* Trim handles: wide enough to grab without aiming, and visible before hover. */
+.clip .handle {
+  width: 12px;
+  /* Hidden until the clip is hovered or selected: handles on every clip at once
+     read as noise, but a selected clip must show that it can be trimmed. */
+  opacity: 0;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.04));
+}
+
+.clip .handle::after {
+  content: "";
+  position: absolute;
+  top: 30%;
+  bottom: 30%;
+  left: 5px;
+  width: 2px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.clip .handle.right {
+  background: linear-gradient(270deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.04));
+}
+
+.clip .handle.right::after {
+  left: auto;
+  right: 5px;
+}
+
+.clip:hover .handle {
+  opacity: 1;
+}
+
+/* Hover must not use `transform`: the drag itself writes an inline transform. */
+.clip:hover {
+  border-color: rgba(255, 255, 255, 0.42);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18), 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="light"] .clip:hover {
+  border-color: rgba(0, 0, 0, 0.3);
+}
+
+/* Landing guide while a clip is being snapped to an edge or the playhead. */
+.snap-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--accent-2);
+  box-shadow: 0 0 0 1px rgba(192, 132, 252, 0.35), 0 0 12px rgba(192, 132, 252, 0.6);
+  pointer-events: none;
+  z-index: 7;
+}
+
+.snap-line::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-2);
+}
+
+/* An empty track states what belongs there instead of being a void. */
+.lane-hint {
+  position: absolute;
+  left: var(--s-6);
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: var(--fs-100);
+  color: var(--text-faint);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-full);
+  padding: 3px 10px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* The lane a dragged clip would land on. */
+.track-lane[data-drop="true"] {
+  background-color: rgba(124, 92, 255, 0.09);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* The playhead gets a grab handle so it reads as draggable. */
+.playhead::before {
+  width: 13px;
+  height: 13px;
+  left: -6px;
 }

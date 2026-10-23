@@ -23,7 +23,7 @@ bash tools/demo.sh
 | **Composition** | position, échelle, rotation, miroir, recadrage, opacité, fondus d'entrée et de sortie, vitesse (hauteur de son préservée), ordre par piste |
 | **Effets** | luminosité, contraste, saturation, température, teinte, gamma, flou, netteté, noir et blanc, sépia, inversion, vignette, incrustation couleur |
 | **Texte** | piste dédiée, taille, gras et italique, couleur, fond, fondus |
-| **Aperçu** | rendu de la timeline composée, lecture, déplacement du curseur, indicateur de fraîcheur |
+| **Aperçu** | composition **temps réel** dans le navigateur : lecture fluide, déplacement du curseur, réglages visibles à l'instant |
 | **Export** | 480p → 4K, MP4 (H.264/AAC) et WebM (VP9/Opus), quatre niveaux de qualité, progression et annulation |
 | **Encodage** | accélération matérielle détectée par sonde réelle (VAAPI, NVENC), repli automatique sur le processeur |
 | **Historique** | annuler et rétablir sur chaque modification, avec le libellé de l'action |
@@ -94,7 +94,7 @@ vérifie au pixel près plutôt qu'à l'œil.
 
 - Pas de transitions enchaînées : le modèle les porte, le rendu ne fait que des
   fondus.
-- L'aperçu est un rendu à la demande, pas une composition temps réel.
+- L'aperçu compose en direct, l'export encode : deux moteurs, donc quelques effets sans équivalent canvas (netteté, incrustation couleur) ne se voient qu'au rendu final.
 - Pas encore : détachement de l'audio, sous-titres, LUT, suppression
   d'arrière-plan, modes de fusion, cadres clés.
 - Le service expose des chemins du système : il écoute sur la boucle locale et ne

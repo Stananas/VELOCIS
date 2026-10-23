@@ -8,6 +8,8 @@
    keeps undo/redo honest: there is exactly one writer.
    ========================================================================= */
 
+import { LivePreview } from "./preview.js";
+
 const API = "";
 
 /* ------------------------------------------------------------------ helpers */
@@ -155,13 +157,13 @@ const S = {
   tab: "media",
   inspectorTab: "transform",
   theme: localStorage.getItem("velocis.theme") || "dark",
-  previewAt: null,
-  previewReady: false,
   playing: false,
   drag: null,
   job: null,
   busy: false,
 };
+
+let stage = null;
 
 const project = () => S.snap?.project;
 const session = () => S.snap?.session;
@@ -443,46 +445,42 @@ function welcomeCard() {
   </div>`;
 }
 
-function stalePreviewCard() {
-  return `<div class="welcome">
-    <h1>Aperçu à générer</h1>
-    <p>Le montage a changé depuis le dernier rendu. Générez l'aperçu pour voir la timeline composée.</p>
-    <div class="actions">
-      <button class="btn primary" data-action="preview">Générer l'aperçu</button>
-    </div>
-  </div>`;
-}
-
 function renderStage() {
   const p = project();
   if (!p) return;
-  const video = $("preview");
-  const hasContent = p.tracks.some((t) => t.clips.length > 0);
-  video.hidden = !S.previewReady;
   const host = $("stage-empty");
-  host.hidden = S.previewReady;
-  if (!S.previewReady) {
-    host.innerHTML = hasContent ? stalePreviewCard() : welcomeCard();
+  const hasContent = p.tracks.some((t) => t.clips.length > 0);
+  host.hidden = hasContent;
+  if (!hasContent) host.innerHTML = welcomeCard();
+  if (stage) {
+    stage.setProject(p);
+    updateTransport();
   }
+}
 
-  const total = session()?.duration || 0;
+/** Transport bar and playhead, driven by the composition clock. */
+function updateTransport() {
+  const total = stage?.duration() ?? 0;
   $("tc-total").textContent = fmtTime(total);
   $("tc-current").textContent = fmtTime(S.playhead);
   const ratio = total > 0 ? clamp(S.playhead / total, 0, 1) : 0;
   $("scrub-fill").style.width = `${ratio * 100}%`;
   $("scrub-thumb").style.left = `${ratio * 100}%`;
   $("btn-play").innerHTML = S.playing ? ICONS.pause : ICONS.play;
+  const playhead = $("playhead");
+  if (playhead) playhead.style.left = `${(S.playhead / US) * S.zoom}px`;
+  if (S.playing) followPlayhead();
+}
 
-  const stale = S.previewReady && S.previewAt !== p.modified_at;
-  $("preview-state").textContent = !hasContent
-    ? ""
-    : S.previewReady
-    ? stale
-      ? "Aperçu obsolète — actualisez pour voir vos changements"
-      : "Aperçu à jour"
-    : "Aucun aperçu généré";
-  $("preview-label").textContent = S.previewReady ? "Actualiser l'aperçu" : "Générer l'aperçu";
-  $("preview-state").style.color = stale ? "var(--warn)" : "";
+/** Keep the playhead in view while playing, without fighting a manual scroll. */
+function followPlayhead() {
+  const wrap = document.querySelector(".ruler-wrap");
+  if (!wrap) return;
+  const x = (S.playhead / US) * S.zoom;
+  const left = wrap.scrollLeft;
+  const right = left + wrap.clientWidth;
+  if (x < left + 40) wrap.scrollLeft = Math.max(0, x - 40);
+  else if (x > right - 80) wrap.scrollLeft = x - wrap.clientWidth + 80;
 }
 
 function renderInspector() {
@@ -696,8 +694,11 @@ function renderTimeline() {
       const clips = track.clips
         .map((clip) => renderClip(clip, track, pxPerSec))
         .join("");
-      const gaps = renderGaps(track, pxPerSec);
-      return `<div class="track-lane ${isAudio ? "audio" : ""}" data-lane="${esc(track.id)}" data-hidden="${track.hidden}">${clips}${gaps}</div>`;
+          const gaps = renderGaps(track, pxPerSec);
+      const hint = track.clips.length
+        ? ""
+        : `<div class="lane-hint">${isAudio ? "Déposez un son ici" : "Déposez un média ici"}</div>`;
+      return `<div class="track-lane ${isAudio ? "audio" : ""}" data-lane="${esc(track.id)}" data-hidden="${track.hidden}">${hint}${clips}${gaps}</div>`;
     })
     .join("");
 
@@ -705,6 +706,7 @@ function renderTimeline() {
     <div class="ruler" id="ruler">${renderRuler(total, pxPerSec)}</div>
     <div class="tracks" id="tracks">${lanes}</div>
     <div class="playhead" id="playhead" style="left:${(S.playhead / US) * pxPerSec}px"></div>
+    <div class="snap-line" id="snap-line" hidden></div>
   </div>`;
 
   const wrap = document.querySelector(".ruler-wrap");
@@ -803,7 +805,8 @@ function renderGaps(track, pxPerSec) {
 
 /* -------------------------------------------------------------- interactions */
 
-/** Snap a time to clip edges and the playhead, within a few pixels. */
+/** Snap a time to clip edges and the playhead, within a few pixels.
+ *  Returns the resulting time and the edge that caught it (null when free). */
 function snapTime(time, ignoreClipId) {
   const p = project();
   const threshold = (8 / S.zoom) * US;
@@ -823,7 +826,24 @@ function snapTime(time, ignoreClipId) {
       best = candidate;
     }
   }
-  return best;
+  return { time: best, snappedAt: best === time ? null : best };
+}
+
+/** Show the vertical guide that says "you are landing exactly here". */
+function showSnapLine(at) {
+  const line = $("snap-line");
+  if (!line) return;
+  if (at === null) {
+    line.hidden = true;
+    return;
+  }
+  line.hidden = false;
+  line.style.left = `${(at / US) * S.zoom}px`;
+}
+
+function hideSnapLine() {
+  const line = $("snap-line");
+  if (line) line.hidden = true;
 }
 
 function laneFromPoint(clientY) {
@@ -893,7 +913,9 @@ function updateClipDrag(event) {
 
   if (drag.mode === "move") {
     let start = Math.max(0, drag.origin.timeline.start + deltaUs);
-    start = snapTime(start, drag.clipId);
+    const snap = snapTime(start, drag.clipId);
+    start = snap.time;
+    showSnapLine(snap.snappedAt);
     drag.previewStart = start;
     el.style.transform = `translateX(${((start - drag.origin.timeline.start) / US) * S.zoom}px)`;
     const lane = laneFromPoint(event.clientY);
@@ -912,6 +934,8 @@ function updateClipDrag(event) {
     const newStart = Math.max(0, drag.origin.timeline.start + delta);
     const newDuration = drag.origin.timeline.duration - (newStart - drag.origin.timeline.start);
     const newSourceStart = drag.isText ? 0 : drag.origin.source.start + delta * speed;
+    const snap = snapTime(newStart, drag.clipId);
+    showSnapLine(snap.snappedAt);
     drag.previewStart = newStart;
     drag.previewTrim = { timelineStart: newStart, timelineDuration: newDuration, sourceStart: newSourceStart };
     el.style.left = `${(newStart / US) * S.zoom}px`;
@@ -935,6 +959,7 @@ function updateClipDrag(event) {
 async function endClipDrag() {
   const drag = S.drag;
   S.drag = null;
+  hideSnapLine();
   if (!drag) return;
   if (!drag.moved) return;
 
@@ -966,30 +991,6 @@ async function endClipDrag() {
 
 /* ------------------------------------------------------------ preview/export */
 
-async function generatePreview() {
-  const p = project();
-  if (!p || session().duration === 0) {
-    toast("Ajoutez au moins un clip avant de générer un aperçu", "error");
-    return;
-  }
-  const height = p.canvas.height >= 1080 ? 540 : 360;
-  const job = await act(() => api.post("/api/preview", { height }));
-  if (!job) return;
-  $("preview-label").textContent = "Rendu…";
-  const result = await pollJob(job.id, (progress) => {
-    $("preview-label").textContent = `Rendu ${Math.round(progress * 100)} %`;
-  });
-  $("preview-label").textContent = "Actualiser l'aperçu";
-  // Adopting the freshly rendered file is the whole point of the button: without
-  // this the stage keeps showing the previous render and stays "stale" forever.
-  if (result?.status === "done" && result.output) {
-    loadPreview(result.output);
-    toast("Aperçu régénéré", "success");
-  } else if (result) {
-    toast(result.message || "Le rendu de l'aperçu a échoué", "error");
-  }
-}
-
 async function pollJob(id, onProgress) {
   for (;;) {
     await new Promise((r) => setTimeout(r, 350));
@@ -1002,16 +1003,6 @@ async function pollJob(id, onProgress) {
     if (onProgress) onProgress(job.progress, job);
     if (job.status !== "running") return job;
   }
-}
-
-function loadPreview(url) {
-  const video = $("preview");
-  video.src = url;
-  video.currentTime = S.playhead / US;
-  video.load();
-  S.previewReady = true;
-  S.previewAt = project()?.modified_at ?? null;
-  renderStage();
 }
 
 /* ------------------------------------------------------------------ modals */
@@ -1341,7 +1332,6 @@ function bindEvents() {
 
   // --- transport
   $("btn-play").onclick = togglePlay;
-  $("btn-preview").onclick = generatePreview;
 
   // Actions offered by the stage's welcome card. Delegated from the stage itself
   // because the card is re-rendered whenever the project changes.
@@ -1349,7 +1339,6 @@ function bindEvents() {
     const btn = e.target.closest("[data-action]");
     if (!btn) return;
     if (btn.dataset.action === "import") $("file-input").click();
-    if (btn.dataset.action === "preview") generatePreview();
     if (btn.dataset.action === "text") {
       S.tab = "text";
       renderSidebar();
@@ -1414,6 +1403,9 @@ function bindEvents() {
 
     const clipEl = e.target.closest(".clip");
     if (!clipEl) {
+      // Clicking empty track space moves the playhead: it is the fastest way to
+      // inspect a moment, and it means a click never does nothing.
+      setPlayhead(timeFromPoint(e.clientX));
       S.selection = null;
       renderTimeline();
       renderInspector();
@@ -1453,7 +1445,7 @@ function bindEvents() {
     e.preventDefault();
     const lane = laneFromPoint(e.clientY);
     if (!lane) return;
-    const at = Math.round(snapTime(timeFromPoint(e.clientX)));
+    const at = Math.round(snapTime(timeFromPoint(e.clientX)).time);
     await mutate("/api/clip/place", { track_id: lane, asset_id: assetId, timeline_start: at });
   });
 
@@ -1511,32 +1503,20 @@ function seekFromScrub(e) {
 }
 
 function setPlayhead(us) {
-  const total = session()?.duration || 0;
+  const total = stage?.duration() ?? 0;
   S.playhead = clamp(us, 0, Math.max(total, 0));
-  const video = $("preview");
-  if (S.previewReady && !S.playing) video.currentTime = S.playhead / US;
-  renderStage();
-  const content = $("tl-content");
-  if (content) {
-    const playhead = $("playhead");
-    if (playhead) playhead.style.left = `${(S.playhead / US) * S.zoom}px`;
-  }
+  stage?.seek(S.playhead);
+  updateTransport();
 }
 
 function togglePlay() {
-  const video = $("preview");
-  if (!S.previewReady) {
-    generatePreview();
+  if (!stage) return;
+  if (stage.duration() <= 0) {
+    toast("Ajoutez au moins un clip pour lancer la lecture", "error");
     return;
   }
-  if (video.paused) {
-    video.play();
-    S.playing = true;
-  } else {
-    video.pause();
-    S.playing = false;
-  }
-  renderStage();
+  S.playing = stage.toggle();
+  updateTransport();
 }
 
 function splitAtPlayhead() {
@@ -1766,6 +1746,26 @@ function onInspectorClick(e) {
 
 async function boot() {
   document.documentElement.dataset.theme = S.theme;
+  stage = new LivePreview($("stage-canvas"), {
+    onTime: (micros) => {
+      S.playhead = micros;
+      // The engine stops itself at the end of the timeline.
+      S.playing = stage.playing;
+      updateTransport();
+    },
+    onBlocked: () => {
+      S.playing = false;
+      updateTransport();
+      toast("Le navigateur a bloqué la lecture : cliquez à nouveau sur Lecture", "error", {
+        label: "Relancer",
+        run: () => {
+          stage.blocked = false;
+          S.playing = stage.toggle();
+          updateTransport();
+        },
+      });
+    },
+  });
   bindEvents();
   try {
     S.caps = await api.get("/api/capabilities");
@@ -1773,14 +1773,6 @@ async function boot() {
     /* capabilities are informational only */
   }
   await refresh();
-  // A preview may already exist from a previous session: adopt it instead of
-  // showing an empty stage and asking the user to regenerate what is on disk.
-  try {
-    const head = await fetch("/media/preview.mp4", { method: "HEAD" });
-    if (head.ok) loadPreview(`/media/preview.mp4?v=${Date.now()}`);
-  } catch {
-    /* no preview yet */
-  }
   if (S.caps) {
     toast(
       `Encodage ${S.caps.hardware_accelerated ? "accéléré par le GPU" : "sur le processeur"} · ${S.caps.heights.join(", ")} disponibles`,

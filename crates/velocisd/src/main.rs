@@ -109,6 +109,7 @@ async fn main() -> Result<()> {
             // reject every video a user actually wants to edit.
             post(api::upload).layer(DefaultBodyLimit::max(8 * 1024 * 1024 * 1024)),
         )
+        .route("/api/media/{id}", get(api::asset_media))
         .route("/api/clip/append", post(api::clip_append))
         .route("/api/clip/place", post(api::clip_place))
         .route("/api/clip/move", post(api::clip_move))
