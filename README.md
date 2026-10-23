@@ -20,6 +20,7 @@ bash tools/demo.sh
 |---|---|
 | **Import** | vidéo, audio, image. Analyse des pistes, vignette, forme d'onde. Dépôt des fichiers n'importe où dans la fenêtre, ou import par chemin |
 | **Timeline** | multi-pistes, déplacement, rognage par les poignées, découpe au curseur, duplication, suppression avec fermeture d'espace, aimantation aux bords et au curseur, zoom, indicateurs d'espace |
+| **Édition dans l'aperçu** | sélection à la souris : déplacer, redimensionner par les coins, pivoter (Maj pour 15°), recadrer par les bords |
 | **Composition** | position, échelle, rotation, miroir, recadrage, opacité, fondus d'entrée et de sortie, vitesse (hauteur de son préservée), ordre par piste |
 | **Effets** | luminosité, contraste, saturation, température, teinte, gamma, flou, netteté, noir et blanc, sépia, inversion, vignette, incrustation couleur |
 | **Texte** | piste dédiée, taille, gras et italique, couleur, fond, fondus |

@@ -454,18 +454,27 @@ export class LivePreview {
     const ch = this.canvas.height;
     const tf = clip.transform;
 
-    // Source rectangle: crop is expressed as fractions on each side.
-    const cropX = mw * clamp(tf.crop_left, 0, 0.49);
-    const cropY = mh * clamp(tf.crop_top, 0, 0.49);
-    const cropW = mw * (1 - clamp(tf.crop_left, 0, 0.49) - clamp(tf.crop_right, 0, 0.49));
-    const cropH = mh * (1 - clamp(tf.crop_top, 0, 0.49) - clamp(tf.crop_bottom, 0, 0.49));
+    // The frame is fitted first and cropped second: trimming an edge hides it
+    // instead of zooming, so a crop handle never moves the picture.
+    const fit = Math.min(cw / mw, ch / mh) * clamp(tf.scale, 0.01, 20);
+    const fullW = mw * fit;
+    const fullH = mh * fit;
+
+    const cl = clamp(tf.crop_left, 0, 0.49);
+    const cr = clamp(tf.crop_right, 0, 0.49);
+    const ct = clamp(tf.crop_top, 0, 0.49);
+    const cb = clamp(tf.crop_bottom, 0, 0.49);
+    const cropX = mw * cl;
+    const cropY = mh * ct;
+    const cropW = mw * (1 - cl - cr);
+    const cropH = mh * (1 - ct - cb);
     if (cropW <= 0 || cropH <= 0) return;
 
-    // Contain inside the canvas, then apply the clip's scale — the same rule the
-    // native renderer uses, so preview and export frame the shot identically.
-    const fit = Math.min(cw / cropW, ch / cropH) * clamp(tf.scale, 0.01, 20);
-    const dw = cropW * fit;
-    const dh = cropH * fit;
+    const dw = fullW * (1 - cl - cr);
+    const dh = fullH * (1 - ct - cb);
+    // Where the cropped region sits inside the fitted frame.
+    const ox = -fullW / 2 + fullW * cl;
+    const oy = -fullH / 2 + fullH * ct;
 
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -476,13 +485,13 @@ export class LivePreview {
     if (tf.mirror_x) ctx.scale(-1, 1);
     if (tf.mirror_y) ctx.scale(1, -1);
     try {
-      ctx.drawImage(media, cropX, cropY, cropW, cropH, -dw / 2, -dh / 2, dw, dh);
+      ctx.drawImage(media, cropX, cropY, cropW, cropH, ox, oy, dw, dh);
     } catch {
       /* a frame not decoded yet */
     }
     ctx.restore();
 
-    this.drawVignette(clip, dw, dh, cw / 2 + tf.x * sx, ch / 2 + tf.y * sy, alpha);
+    this.drawVignette(clip, fullW, fullH, cw / 2 + tf.x * sx, ch / 2 + tf.y * sy, alpha);
   }
 
   drawVignette(clip, dw, dh, cx, cy, alpha) {

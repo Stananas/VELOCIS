@@ -368,6 +368,15 @@ pub fn build_plan_with(
         let t = item.clip.transform;
         let cropped =
             t.crop_left != 0.0 || t.crop_right != 0.0 || t.crop_top != 0.0 || t.crop_bottom != 0.0;
+        // Contain inside the canvas first, so `scale` means the same thing for
+        // every source resolution.
+        write!(
+            chain,
+            "scale=w={width}:h={height}:force_original_aspect_ratio=decrease:eval=init,"
+        )
+        .ok();
+        // Crop *after* the fit, so trimming an edge hides it instead of zooming:
+        // dragging a crop handle must not move the picture.
         if cropped {
             let w = (1.0 - t.crop_left - t.crop_right).clamp(0.01, 1.0);
             let h = (1.0 - t.crop_top - t.crop_bottom).clamp(0.01, 1.0);
@@ -379,13 +388,6 @@ pub fn build_plan_with(
             )
             .ok();
         }
-        // Contain inside the canvas first, so `scale` means the same thing for
-        // every source resolution.
-        write!(
-            chain,
-            "scale=w={width}:h={height}:force_original_aspect_ratio=decrease:eval=init,"
-        )
-        .ok();
         let scale = t.scale.clamp(0.01, 20.0);
         if (scale - 1.0).abs() > 1e-9 {
             write!(chain, "scale=w=iw*{scale:.6}:h=ih*{scale:.6}:eval=init,").ok();

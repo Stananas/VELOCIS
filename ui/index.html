@@ -142,6 +142,21 @@
           <div class="stage">
             <div class="stage-inner" id="stage-inner">
               <canvas id="stage-canvas" aria-label="Aperçu du montage"></canvas>
+              <div class="stage-overlay" id="stage-overlay" hidden>
+                <div class="sel-box" id="sel-box">
+                  <div class="sel-crop">
+                    <span class="sel-edge" data-edge="n"></span>
+                    <span class="sel-edge" data-edge="e"></span>
+                    <span class="sel-edge" data-edge="s"></span>
+                    <span class="sel-edge" data-edge="w"></span>
+                  </div>
+                  <span class="sel-handle" data-handle="nw"></span>
+                  <span class="sel-handle" data-handle="ne"></span>
+                  <span class="sel-handle" data-handle="sw"></span>
+                  <span class="sel-handle" data-handle="se"></span>
+                  <span class="sel-rotate" data-rotate title="Pivoter (Maj pour 15°)"></span>
+                </div>
+              </div>
               <div class="stage-empty" id="stage-empty"></div>
             </div>
           </div>

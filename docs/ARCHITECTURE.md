@@ -158,6 +158,27 @@ Le plan de rendu natif reste la source de vérité : le même projet produit le 
 cadrage dans les deux moteurs, parce qu'ils appliquent la même règle de
 « contain puis échelle ».
 
+## Édition directe dans la scène
+
+La scène est un canvas : la manipulation se fait donc par une **surcouche DOM**
+posée exactement dessus — cadre de sélection, quatre poignées d'angle pour
+l'échelle, une poignée de rotation, quatre bords en mode recadrage. Le canvas ne
+fait pas de test de collision, et les poignées restent nettes à toute échelle.
+
+Pendant le geste, la transformation est écrite dans le projet local et le canvas
+est redessiné : l'image suit le pointeur. Seule la valeur finale part au service,
+ce qui donne **une entrée d'historique par geste** et non une par déplacement de
+souris.
+
+**Le recadrage vient après l'ajustement.** Rogner un bord masque ce bord au lieu
+de zoomer : tirer une poignée de recadrage ne déplace jamais l'image. Le graphe
+ffmpeg et le compositeur canvas appliquent la même règle, sinon l'aperçu et
+l'export ne cadreraient pas pareil.
+
+Sélectionner un clip hors du curseur y amène la tête de lecture, un peu à
+l'intérieur : au tout début, un clip avec fondu est encore transparent et le
+cadre flotterait sur du vide.
+
 ## Côté interface
 
 **Seule la règle déplace le curseur.** Cliquer dans une piste vide déselectionne,

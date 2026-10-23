@@ -48,7 +48,9 @@
   --t-fast: 100ms;
   --t-normal: 180ms;
   --t-slow: 280ms;
+  --t-panel: 240ms;
   --ease: cubic-bezier(0.33, 0, 0.1, 1);
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
 
   /* Layout */
   --gap: 10px;
@@ -314,7 +316,8 @@ textarea {
 }
 
 .btn:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: translateY(1px) scale(0.97);
+  transition-duration: 60ms;
 }
 
 .btn:disabled {
@@ -415,18 +418,50 @@ textarea {
 
 .middle {
   display: flex;
-  gap: var(--gap);
   min-height: 0;
   min-width: 0;
 }
 
-/* Collapsing removes the card entirely, so no gap is left behind. */
-.middle[data-sidebar="collapsed"] .sidebar {
-  display: none;
+/* Spacing as margins rather than `gap`: collapsing a panel can then animate its
+   own margin away, leaving exactly one gutter between the remaining cards. */
+.middle > * {
+  min-width: 0;
 }
 
+.middle > * + * {
+  margin-left: var(--gap);
+}
+
+.sidebar,
+.inspector {
+  overflow: hidden;
+  transition: flex-basis var(--t-panel) var(--ease-out),
+    opacity var(--t-panel) var(--ease-out), margin-left var(--t-panel) var(--ease-out),
+    border-width var(--t-panel) var(--ease-out);
+}
+
+/* The content keeps its width while the card narrows, so the panel slides away
+   instead of reflowing its text. */
+.sidebar > *,
+.inspector > * {
+  min-width: var(--panel-w);
+}
+
+.sidebar {
+  --panel-w: var(--sidebar-w);
+}
+
+.inspector {
+  --panel-w: var(--inspector-w);
+}
+
+.middle[data-sidebar="collapsed"] .sidebar,
 .middle[data-inspector="collapsed"] .inspector {
-  display: none;
+  flex-basis: 0;
+  opacity: 0;
+  margin-left: 0;
+  border-width: 0;
+  pointer-events: none;
 }
 
 /* -------------------------------------------------------------------- rail */
@@ -469,6 +504,11 @@ textarea {
   background: var(--accent-soft);
   color: var(--accent-2);
   border-color: rgba(124, 92, 255, 0.4);
+}
+
+.rail-btn:active {
+  transform: scale(0.92);
+  transition-duration: 60ms;
 }
 
 .rail-spacer {
@@ -608,6 +648,18 @@ textarea {
   background: #000;
   border-radius: var(--r-md);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  animation: canvas-in var(--t-slow) var(--ease-out);
+}
+
+@keyframes canvas-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .stage-empty {
@@ -970,9 +1022,15 @@ textarea:focus {
   transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
 }
 
+.media-card {
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-normal) var(--ease-out),
+    transform var(--t-normal) var(--ease-out);
+}
+
 .media-card:hover {
   border-color: var(--accent);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.32);
+  transform: translateY(-2px);
 }
 
 .media-card .thumb {
@@ -1519,6 +1577,16 @@ textarea:focus {
   display: grid;
   place-items: center;
   z-index: 50;
+  animation: backdrop-in var(--t-normal) var(--ease-out);
+}
+
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .modal {
@@ -1530,6 +1598,18 @@ textarea:focus {
   padding: var(--s-10);
   max-height: calc(100vh - 96px);
   overflow-y: auto;
+  animation: modal-in var(--t-panel) var(--ease-out);
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .modal h2 {
@@ -1702,4 +1782,161 @@ textarea:focus {
   .brand-name {
     display: none;
   }
+}
+
+/* Motion is decoration: honour the system preference. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ------------------------------------------------------- édition dans la scène */
+
+/* A DOM overlay exactly over the canvas: crisp handles, no canvas hit-testing. */
+.stage-overlay {
+  position: absolute;
+  z-index: 8;
+  pointer-events: none;
+}
+
+.sel-box {
+  position: absolute;
+  border: 1.5px solid var(--accent);
+  border-radius: 1px;
+  transform-origin: center;
+  pointer-events: auto;
+  cursor: move;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+}
+
+.sel-handle {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  background: var(--accent);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.sel-handle[data-handle="nw"] {
+  left: -6px;
+  top: -6px;
+  cursor: nwse-resize;
+}
+
+.sel-handle[data-handle="ne"] {
+  right: -6px;
+  top: -6px;
+  cursor: nesw-resize;
+}
+
+.sel-handle[data-handle="sw"] {
+  left: -6px;
+  bottom: -6px;
+  cursor: nesw-resize;
+}
+
+.sel-handle[data-handle="se"] {
+  right: -6px;
+  bottom: -6px;
+  cursor: nwse-resize;
+}
+
+.sel-rotate {
+  position: absolute;
+  left: 50%;
+  top: -32px;
+  width: 13px;
+  height: 13px;
+  margin-left: -6.5px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--accent);
+  cursor: grab;
+}
+
+.sel-rotate::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  width: 1px;
+  height: 17px;
+  background: var(--accent);
+}
+
+.sel-rotate:active {
+  cursor: grabbing;
+}
+
+/* Crop mode: the crop rectangle is the live region, the rest of the frame is
+   dimmed so the result is obvious before releasing the pointer. */
+.sel-crop {
+  position: absolute;
+  inset: var(--crop-top, 0) var(--crop-right, 0) var(--crop-bottom, 0) var(--crop-left, 0);
+  display: none;
+  pointer-events: none;
+}
+
+.sel-crop::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1.5px dashed var(--accent-2);
+  background: rgba(192, 132, 252, 0.06);
+}
+
+.stage-overlay[data-crop="true"] .sel-crop {
+  display: block;
+}
+
+.stage-overlay[data-crop="true"] .sel-box {
+  border-color: rgba(192, 132, 252, 0.45);
+}
+
+.sel-edge {
+  position: absolute;
+  background: var(--accent-2);
+  border-radius: 2px;
+  pointer-events: auto;
+}
+
+.sel-edge[data-edge="n"],
+.sel-edge[data-edge="s"] {
+  left: 50%;
+  width: 26px;
+  height: 4px;
+  margin-left: -13px;
+  cursor: ns-resize;
+}
+
+.sel-edge[data-edge="n"] {
+  top: -2px;
+}
+
+.sel-edge[data-edge="s"] {
+  bottom: -2px;
+}
+
+.sel-edge[data-edge="e"],
+.sel-edge[data-edge="w"] {
+  top: 50%;
+  width: 4px;
+  height: 26px;
+  margin-top: -13px;
+  cursor: ew-resize;
+}
+
+.sel-edge[data-edge="w"] {
+  left: -2px;
+}
+
+.sel-edge[data-edge="e"] {
+  right: -2px;
 }

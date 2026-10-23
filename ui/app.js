@@ -9,6 +9,7 @@
    ========================================================================= */
 
 import { LivePreview } from "./preview.js";
+import { StageManipulator } from "./stage.js";
 
 const API = "";
 
@@ -173,6 +174,7 @@ const S = {
 };
 
 let stage = null;
+let manipulator = null;
 
 const project = () => S.snap?.project;
 const session = () => S.snap?.session;
@@ -579,6 +581,7 @@ function renderStage() {
     stage.setProject(p);
     updateTransport();
   }
+  manipulator?.refresh();
 }
 
 /** Transport bar and playhead, driven by the composition clock. */
@@ -624,6 +627,7 @@ function renderInspector() {
   }
 
   const { clip, track } = selection;
+  manipulator?.refresh();
   const isText = Boolean(clip.text);
   const isAudioTrack = track.kind === "audio";
   const tabs = [];
@@ -705,6 +709,14 @@ function renderInspector() {
           <button class="toggle" data-transform-toggle="mirror_y" aria-pressed="${t.mirror_y}">Vertical</button>
           <button class="toggle" data-transform-reset>Recentrer</button>
         </div>
+      </div>
+      <div class="field">
+        <label>Cadrage</label>
+        <div class="toggle-row">
+          <button class="toggle" data-crop-toggle aria-pressed="${Boolean(manipulator?.cropMode)}">Recadrer</button>
+          <button class="toggle" data-crop-reset>Réinitialiser</button>
+        </div>
+        <p class="hint why">En mode recadrage, tirez les bords du cadre dans l'aperçu.</p>
       </div>
       <div class="field">
         <label>Opacité <b id="f-opacity-v">${Math.round(clip.opacity * 100)} %</b></label>
@@ -1592,6 +1604,18 @@ function bindEvents() {
     }
     const handle = e.target.closest("[data-handle]");
     S.selection = clipEl.dataset.clip;
+    // Selecting a clip that is not under the playhead would show a selection box
+    // over unrelated frames. Move the playhead onto it so direct manipulation
+    // always acts on what is on screen.
+    const selected = selectedClip();
+    if (selected) {
+      const { clip } = selected;
+      if (S.playhead < clip.timeline.start || S.playhead >= clipEnd(clip)) {
+        // Land a little inside: at the exact start a clip with a fade-in is
+        // still fully transparent, so the box would float over nothing.
+        setPlayhead(clip.timeline.start + Math.min(500_000, Math.floor(clip.timeline.duration / 2)));
+      }
+    }
     // Deliberately *not* a full re-render: rebuilding the timeline would replace
     // the very node being dragged, and pointer events on a detached node no
     // longer reach the delegation root. Selection is reflected in place, and the
@@ -1892,6 +1916,19 @@ function onInspectorClick(e) {
     renderInspector();
     return;
   }
+  if (e.target.closest("[data-crop-toggle]")) {
+    manipulator?.setCropMode(!manipulator.cropMode);
+    renderInspector();
+    return;
+  }
+  if (e.target.closest("[data-crop-reset]")) {
+    queueClipPatch(
+      { transform: { ...clip.transform, crop_left: 0, crop_right: 0, crop_top: 0, crop_bottom: 0 } },
+      "Recadrage réinitialisé"
+    );
+    renderInspector();
+    return;
+  }
   if (e.target.closest("[data-transform-reset]")) {
     queueClipPatch(
       { transform: { ...clip.transform, x: 0, y: 0, scale: 1, rotation_deg: 0 } },
@@ -1964,6 +2001,23 @@ async function boot() {
     document.documentElement.style.setProperty("--timeline-h", `${Math.round(savedHeight)}px`);
   }
   applyPanelState();
+  manipulator = new StageManipulator({
+    canvas: $("stage-canvas"),
+    overlay: $("stage-overlay"),
+    box: $("sel-box"),
+    getProject: project,
+    getSelection: selectedClip,
+    onLive: () => stage?.requestDraw(),
+    onCommit: (transform) => {
+      const selection = selectedClip();
+      if (!selection) return;
+      mutate("/api/clip/update", {
+        clip_id: selection.clip.id,
+        transform,
+        label: "Ajuster la transformation",
+      });
+    },
+  });
   bindEvents();
   try {
     S.caps = await api.get("/api/capabilities");
