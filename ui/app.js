@@ -121,6 +121,8 @@ const ICONS = {
   eyeOff: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 2l12 12M6 4.5A6.6 6.6 0 018 4c4 0 6.5 4 6.5 4a11 11 0 01-2.3 2.6M4.3 5.6A11 11 0 001.5 8s2.5 4 6.5 4c.8 0 1.5-.2 2.1-.4"/></svg>`,
   lock: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3.5" y="7" width="9" height="6" rx="1.2"/><path d="M5.8 7V5.2a2.2 2.2 0 014.4 0V7"/></svg>`,
   unlock: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3.5" y="7" width="9" height="6" rx="1.2"/><path d="M5.8 7V5.2a2.2 2.2 0 014.4 0"/></svg>`,
+  panelLeft: `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="3.5" width="15" height="13" rx="2.5"/><path d="M8 3.5v13"/></svg>`,
+  panelRight: `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="3.5" width="15" height="13" rx="2.5"/><path d="M12 3.5v13"/></svg>`,
 };
 
 /* -------------------------------------------------------------- effect model */
@@ -162,6 +164,8 @@ const S = {
   tab: "media",
   inspectorTab: "transform",
   theme: localStorage.getItem("velocis.theme") || "dark",
+  panel: localStorage.getItem("velocis.panel") !== "closed",
+  inspector: localStorage.getItem("velocis.inspector") !== "collapsed",
   playing: false,
   drag: null,
   job: null,
@@ -218,6 +222,40 @@ const api = {
   get: (p) => request("GET", p),
   post: (p, b) => request("POST", p, b ?? {}),
 };
+
+/* ---------------------------------------------------------------- panneaux */
+
+/** The rail stays visible; only the content panel folds away. */
+function applyPanelState() {
+  const middle = $("middle");
+  if (!middle) return;
+  middle.dataset.sidebar = S.panel ? "open" : "collapsed";
+  middle.dataset.inspector = S.inspector ? "open" : "collapsed";
+  $("btn-panel").setAttribute("aria-pressed", String(S.panel));
+  $("btn-inspector").setAttribute("aria-pressed", String(S.inspector));
+  $("btn-panel").title = S.panel ? "Masquer le panneau des médias ( [ )" : "Afficher le panneau des médias ( [ )";
+  $("btn-inspector").title = S.inspector ? "Masquer les propriétés ( ] )" : "Afficher les propriétés ( ] )";
+}
+
+function setPanel(open) {
+  S.panel = open;
+  localStorage.setItem("velocis.panel", open ? "open" : "closed");
+  applyPanelState();
+}
+
+function setInspector(open) {
+  S.inspector = open;
+  localStorage.setItem("velocis.inspector", open ? "open" : "collapsed");
+  applyPanelState();
+}
+
+function togglePanel() {
+  setPanel(!S.panel);
+}
+
+function toggleInspector() {
+  setInspector(!S.inspector);
+}
 
 /* ------------------------------------------------------------------- toasts */
 
@@ -340,6 +378,9 @@ function renderHeader() {
   undo.innerHTML = ICONS.undo;
   redo.innerHTML = ICONS.redo;
   $("btn-theme").innerHTML = S.theme === "dark" ? ICONS.sun : ICONS.moon;
+  $("btn-panel").innerHTML = ICONS.panelLeft;
+  $("btn-inspector").innerHTML = ICONS.panelRight;
+  applyPanelState();
 
   // Aspect presets, with the reason each one exists — the same "say why" habit
   // that makes a preset list readable instead of cryptic.
@@ -365,9 +406,13 @@ function renderHeader() {
 function renderSidebar() {
   const p = project();
   if (!p) return;
-  document.querySelectorAll(".tab").forEach((t) => {
+  // Scoped to the rail: the inspector's own tabs use a different data attribute,
+  // and a broad selector used to reset them on every render.
+  document.querySelectorAll(".rail-btn[data-tab]").forEach((t) => {
     t.setAttribute("aria-selected", String(t.dataset.tab === S.tab));
   });
+  const titles = { media: "Média", text: "Texte", effects: "Effets" };
+  $("panel-title").textContent = titles[S.tab] ?? "Média";
   document.querySelectorAll(".panel[data-panel]").forEach((panel) => {
     panel.hidden = panel.dataset.panel !== S.tab;
   });
@@ -377,14 +422,14 @@ function renderSidebar() {
       const icon = a.kind === "audio" ? ICONS.audio : a.kind === "image" ? ICONS.image : ICONS.video;
       const thumb = a.thumbnail_path ? `style="background-image:url('${esc(fileUrl(a.thumbnail_path))}')"` : "";
       const dims = a.width ? `${a.width}×${a.height}` : a.audio_channels ? `${a.audio_channels} canaux` : "";
-      return `<div class="media-card" draggable="true" data-asset="${esc(a.id)}" title="Glissez sur la timeline, ou cliquez sur +">
+      const details = `${a.name} — ${dims} ${a.video_codec || a.audio_codec || ""}`.trim();
+      return `<div class="media-card" draggable="true" data-asset="${esc(a.id)}" title="${esc(details)}">
         <div class="thumb" ${thumb}>${a.thumbnail_path ? "" : icon}
           <button class="add" data-add-asset="${esc(a.id)}" title="Ajouter à la fin de la timeline" aria-label="Ajouter ${esc(a.name)} à la timeline">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 3v10M3 8h10"/></svg>
           </button>
         </div>
         <div class="meta"><b>${esc(a.name)}</b><span>${fmtShort(a.duration)}</span></div>
-        <div class="meta"><span>${dims}</span><span>${esc(a.video_codec || a.audio_codec || "")}</span></div>
       </div>`;
     })
     .join("");
@@ -567,7 +612,9 @@ function renderInspector() {
   const body = $("inspector-body");
 
   if (!selection) {
-    tabsHost.innerHTML = "";
+    // With nothing selected there are no tabs, but the header must still say what
+    // the panel is.
+    tabsHost.innerHTML = `<span class="panel-title">Propriétés</span>`;
     body.innerHTML = `<div class="empty-state">
       <strong>Rien de sélectionné</strong>
       Cliquez un clip sur la timeline pour régler sa position, son volume,
@@ -1238,6 +1285,8 @@ function helpModal() {
     ["Maj + ← / →", "Déplacer le curseur d'une image"],
     ["Début / Fin", "Aller au début ou à la fin"],
     ["+ / −", "Zoomer ou dézoomer la timeline"],
+    ["[", "Afficher ou masquer le panneau des médias"],
+    ["]", "Afficher ou masquer les propriétés"],
   ];
   const modal = openModal(`
     <h2>Raccourcis clavier</h2>
@@ -1310,11 +1359,49 @@ function bindEvents() {
   });
 
   // --- sidebar
-  document.querySelector(".sidebar .tabs").addEventListener("click", (e) => {
-    const tab = e.target.closest(".tab");
+  // The rail selects a section; clicking the current one folds the panel, which
+  // is the quickest way to give the stage more room.
+  $("rail").addEventListener("click", (e) => {
+    const tab = e.target.closest("[data-tab]");
     if (!tab) return;
-    S.tab = tab.dataset.tab;
+    if (!S.panel) {
+      S.tab = tab.dataset.tab;
+      setPanel(true);
+    } else if (S.tab === tab.dataset.tab) {
+      setPanel(false);
+    } else {
+      S.tab = tab.dataset.tab;
+    }
     renderSidebar();
+  });
+
+  $("btn-panel").onclick = togglePanel;
+  $("btn-panel-close").onclick = () => setPanel(false);
+  $("btn-panel-collapse").onclick = () => setPanel(false);
+  $("btn-inspector").onclick = toggleInspector;
+  $("btn-inspector-close").onclick = () => setInspector(false);
+
+  // Timeline height: drag the strip at its top edge. Remembered across sessions.
+  const resize = $("timeline-resize");
+  resize.addEventListener("pointerdown", (e) => {
+    try {
+      resize.setPointerCapture(e.pointerId);
+    } catch {
+      /* synthetic or released pointer */
+    }
+    const startY = e.clientY;
+    const startH = document.querySelector(".timeline").getBoundingClientRect().height;
+    const move = (ev) => {
+      const height = clamp(startH - (ev.clientY - startY), 150, window.innerHeight * 0.62);
+      document.documentElement.style.setProperty("--timeline-h", `${Math.round(height)}px`);
+      localStorage.setItem("velocis.timelineH", String(Math.round(height)));
+    };
+    const up = () => {
+      resize.removeEventListener("pointermove", move);
+      resize.removeEventListener("pointerup", up);
+    };
+    resize.addEventListener("pointermove", move);
+    resize.addEventListener("pointerup", up);
   });
 
   const dropzone = $("dropzone");
@@ -1711,6 +1798,10 @@ function onKeyDown(e) {
     $("zoom").value = String(clamp(S.zoom / 1.3, 6, 320));
     S.zoom = Number($("zoom").value);
     renderTimeline();
+  } else if (e.key === "[") {
+    togglePanel();
+  } else if (e.key === "]") {
+    toggleInspector();
   } else if (e.key === "Escape") {
     closeModal();
   }
@@ -1868,6 +1959,11 @@ async function boot() {
       });
     },
   });
+  const savedHeight = Number(localStorage.getItem("velocis.timelineH"));
+  if (savedHeight > 0) {
+    document.documentElement.style.setProperty("--timeline-h", `${Math.round(savedHeight)}px`);
+  }
+  applyPanelState();
   bindEvents();
   try {
     S.caps = await api.get("/api/capabilities");

@@ -12,8 +12,8 @@
   </head>
   <body>
     <div class="app">
-      <!-- ================================================== header ======= -->
-      <header class="header">
+      <!-- =================================================== top bar ===== -->
+      <header class="topbar card">
         <div class="brand">
           <svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
             <defs>
@@ -27,9 +27,10 @@
               <path d="M10 9.5 L16.6 22.5 L23.4 9.5" stroke="#fff" stroke-width="3.1" stroke-linecap="round" stroke-linejoin="round" />
             </g>
           </svg>
-          <span>Velocis</span>
-          <span class="brand-sub">Studio</span>
+          <span class="brand-name">Velocis</span>
         </div>
+
+        <span class="sep"></span>
 
         <input
           id="project-name"
@@ -42,41 +43,75 @@
 
         <div class="header-spacer"></div>
 
-        <div class="toggle-row" id="aspect-switch" aria-label="Format de la vidéo"></div>
+        <div class="segmented" id="aspect-switch" aria-label="Format de la vidéo"></div>
+
+        <span class="sep"></span>
+
+        <button class="btn icon" id="btn-panel" title="Panneau des médias ( [ )" aria-label="Afficher ou masquer le panneau des médias" aria-pressed="true"></button>
+        <button class="btn icon" id="btn-inspector" title="Panneau des propriétés ( ] )" aria-label="Afficher ou masquer le panneau des propriétés" aria-pressed="true"></button>
+
+        <span class="sep"></span>
 
         <button class="btn icon" id="btn-undo" title="Annuler" aria-label="Annuler"></button>
         <button class="btn icon" id="btn-redo" title="Rétablir" aria-label="Rétablir"></button>
         <button class="btn icon" id="btn-theme" title="Thème clair ou sombre" aria-label="Changer de thème"></button>
         <button class="btn icon" id="btn-help" title="Raccourcis clavier" aria-label="Raccourcis clavier">?</button>
+
         <button class="btn primary" id="btn-export" aria-label="Exporter la vidéo">
           <span id="export-label">Exporter</span>
         </button>
       </header>
 
-      <!-- ================================================== middle ======= -->
-      <div class="middle" id="middle">
-        <!-- ------------------------------------------- left sidebar ---- -->
-        <aside class="sidebar" aria-label="Panneau de contenu">
-          <div class="tabs" role="tablist">
-            <button class="tab" role="tab" data-tab="media" aria-selected="true">Média</button>
-            <button class="tab" role="tab" data-tab="text" aria-selected="false">Texte</button>
-            <button class="tab" role="tab" data-tab="effects" aria-selected="false">Effets</button>
+      <!-- ================================================== workspace ==== -->
+      <div class="middle" id="middle" data-sidebar="open" data-inspector="open">
+        <!-- ---------------------------------------------------- rail ---- -->
+        <nav class="rail card" id="rail" aria-label="Sections du panneau">
+          <button class="rail-btn" data-tab="media" aria-selected="true" title="Média" aria-label="Média">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="2.5" y="4" width="11" height="12" rx="2" />
+              <path d="M13.5 8l4-2v8l-4-2z" />
+            </svg>
+          </button>
+          <button class="rail-btn" data-tab="text" aria-selected="false" title="Texte" aria-label="Texte">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7">
+              <path d="M4 5h12M10 5v11" stroke-linecap="round" />
+            </svg>
+          </button>
+          <button class="rail-btn" data-tab="effects" aria-selected="false" title="Effets" aria-label="Effets">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
+              <path d="M10 2.5l1.6 4.1 4.4.4-3.3 2.9 1 4.3L10 11.8l-3.7 2.4 1-4.3L4 7l4.4-.4z" />
+            </svg>
+          </button>
+          <div class="rail-spacer"></div>
+          <button class="rail-btn" id="btn-panel-collapse" title="Replier le panneau ( [ )" aria-label="Replier le panneau">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 5l-5 5 5 5" />
+            </svg>
+          </button>
+        </nav>
+
+        <!-- --------------------------------------------- media panel ---- -->
+        <aside class="sidebar card" aria-label="Panneau de contenu">
+          <div class="panel-head">
+            <span class="panel-title" id="panel-title">Média</span>
+            <button class="icon-btn" id="btn-panel-close" title="Replier ( [ )" aria-label="Replier le panneau">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M10 3.5L5.5 8l4.5 4.5" />
+              </svg>
+            </button>
           </div>
 
           <div class="panel" data-panel="media">
             <div class="dropzone" id="dropzone" tabindex="0" role="button">
               <strong>Importer un média</strong>
-              Glissez vos fichiers ici, ou cliquez pour parcourir.<br />
-              Vidéo, image et audio sont acceptés.
+              Glissez vos fichiers ici, ou cliquez pour parcourir.
             </div>
             <input type="file" id="file-input" multiple hidden accept="video/*,audio/*,image/*" />
             <div class="chip-row">
               <button class="chip" id="btn-import-path">Importer par chemin…</button>
             </div>
             <div class="media-grid" id="media-grid"></div>
-            <p class="hint why" id="media-hint">
-              Astuce : double-cliquez une vignette pour l'ajouter à la fin de la timeline.
-            </p>
+            <p class="hint why" id="media-hint">Double-cliquez une vignette, ou cliquez sur +, pour l'ajouter.</p>
           </div>
 
           <div class="panel" data-panel="text" hidden>
@@ -92,22 +127,18 @@
               <label for="text-duration">Durée <b id="text-duration-value">3,0 s</b></label>
               <input type="range" id="text-duration" min="500" max="15000" step="250" value="3000" />
             </div>
-            <button class="btn primary" id="btn-add-text" style="width: 100%">Ajouter le texte</button>
-            <p class="hint why">
-              Le texte est placé au niveau du curseur, sur la piste vidéo du dessus.
-            </p>
+            <button class="btn primary block" id="btn-add-text">Ajouter le texte</button>
+            <p class="hint why">Le texte est placé au curseur, sur sa propre piste.</p>
           </div>
 
           <div class="panel" data-panel="effects" hidden>
-            <p class="hint" id="effects-intro">
-              Sélectionnez un clip sur la timeline, puis ajoutez-lui un effet.
-            </p>
+            <p class="hint" id="effects-intro">Sélectionnez un clip, puis ajoutez-lui un effet.</p>
             <div id="effects-catalog"></div>
           </div>
         </aside>
 
-        <!-- ------------------------------------------------- stage ------ -->
-        <section class="stage-wrap" aria-label="Aperçu">
+        <!-- --------------------------------------------------- stage ---- -->
+        <section class="stage-wrap card" aria-label="Aperçu">
           <div class="stage">
             <div class="stage-inner" id="stage-inner">
               <canvas id="stage-canvas" aria-label="Aperçu du montage"></canvas>
@@ -116,7 +147,7 @@
           </div>
           <div class="transport">
             <button class="btn icon" id="btn-play" title="Lecture (Espace)" aria-label="Lecture"></button>
-            <span class="timecode"><b id="tc-current">00:00.00</b> / <span id="tc-total">00:00.00</span></span>
+            <span class="timecode"><b id="tc-current">00:00.00</b> <span class="dim">/</span> <span id="tc-total">00:00.00</span></span>
             <div class="scrub" id="scrub">
               <div class="scrub-track">
                 <div class="scrub-fill" id="scrub-fill"></div>
@@ -124,20 +155,28 @@
               </div>
             </div>
             <span class="live-badge" title="Le montage est composé en direct dans le navigateur">
-              <span class="dot"></span> Composition en direct
+              <span class="dot"></span> Direct
             </span>
           </div>
         </section>
 
-        <!-- --------------------------------------------- inspector ------ -->
-        <aside class="inspector" aria-label="Panneau de propriétés">
-          <div class="tabs" role="tablist" id="inspector-tabs"></div>
+        <!-- ----------------------------------------------- inspector ---- -->
+        <aside class="inspector card" aria-label="Panneau de propriétés">
+          <div class="panel-head">
+            <div class="tabs" role="tablist" id="inspector-tabs"></div>
+            <button class="icon-btn" id="btn-inspector-close" title="Replier ( ] )" aria-label="Replier les propriétés">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 3.5L10.5 8 6 12.5" />
+              </svg>
+            </button>
+          </div>
           <div class="panel" id="inspector-body"></div>
         </aside>
       </div>
 
       <!-- ================================================== timeline ===== -->
-      <section class="timeline" aria-label="Timeline">
+      <section class="timeline card" aria-label="Timeline">
+        <div class="timeline-resize" id="timeline-resize" role="separator" aria-label="Redimensionner la timeline" title="Glisser pour redimensionner"></div>
         <div class="timeline-bar">
           <button class="btn small icon" id="btn-add-video-track" title="Ajouter une piste vidéo">+V</button>
           <button class="btn small icon" id="btn-add-audio-track" title="Ajouter une piste audio">+A</button>

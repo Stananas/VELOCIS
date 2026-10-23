@@ -181,6 +181,13 @@ La feuille de style commence donc par une règle `[hidden]` explicite.
 La ligne centrale a dû être fixée à `minmax(0, 1fr)` : sans cela, la scène
 poussait la barre de lecture hors de la fenêtre.
 
+**La disposition est en cartes insérées.** Cinq surfaces (barre, rail, panneau,
+scène, timeline) flottent sur un fond plus sombre avec un rythme de 10 px. Les
+panneaux se replient entièrement — pas une largeur nulle, un `display: none` —
+pour qu'aucun espace ne reste entre les cartes, et la timeline se redimensionne
+à la poignée. La densité est volontairement basse : 30 px de haut pour les
+contrôles, 9 à 13 px de texte, pour que l'espace aille à l'image.
+
 **Les jetons de design suivent une échelle, pas des valeurs au hasard.** Rayons
 2/4/6/8/12/16, rythme d'espacement de 4, corps de texte de 10 à 24, durées
 d'animation de 50 à 500 ms. C'est ce qui donne à une interface dense une

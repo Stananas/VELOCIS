@@ -1,10 +1,10 @@
 /* ============================================================================
-   Velocis — design tokens and layout
+   Velocis — feuille de style
    ----------------------------------------------------------------------------
-   The token *scale* follows the conventions a Fluent-based editor uses (radii
-   2/4/6/8/12/16, a 4px spacing rhythm, a 50–500 ms motion scale) because those
-   proportions are what make a dense editing UI feel calm. The palette, the
-   component set and the layout are our own.
+   Everything is a card inset from the window edge: the work area gets a darker
+   backdrop, the panels float on it with a 10px rhythm. The scale is deliberately
+   compact — a 52px bar, 30px controls, 10–12px body text — because an editor
+   should give its space to the picture and the timeline, not to chrome.
    ========================================================================= */
 
 :root {
@@ -27,17 +27,16 @@
   --s-8: 16px;
   --s-10: 20px;
   --s-12: 24px;
-  --s-16: 32px;
 
   /* Typography */
   --font: "Segoe UI", -apple-system, BlinkMacSystemFont, "Inter", Roboto,
     "Helvetica Neue", sans-serif;
   --font-mono: "Cascadia Mono", Consolas, "SF Mono", monospace;
   --fs-100: 10px;
-  --fs-200: 12px;
-  --fs-300: 13px;
-  --fs-400: 14px;
-  --fs-500: 16px;
+  --fs-200: 11.5px;
+  --fs-300: 12.5px;
+  --fs-400: 13.5px;
+  --fs-500: 15px;
   --fs-600: 18px;
   --fs-700: 22px;
   --fw-regular: 400;
@@ -48,16 +47,18 @@
   /* Motion */
   --t-fast: 100ms;
   --t-normal: 180ms;
-  --t-slow: 300ms;
+  --t-slow: 280ms;
   --ease: cubic-bezier(0.33, 0, 0.1, 1);
 
   /* Layout */
-  --header-h: 48px;
-  --sidebar-w: 320px;
-  --inspector-w: 300px;
-  --timeline-h: clamp(200px, 34vh, 300px);
-  --track-h-video: 60px;
-  --track-h-audio: 44px;
+  --gap: 10px;
+  --topbar-h: 52px;
+  --rail-w: 52px;
+  --sidebar-w: 300px;
+  --inspector-w: 296px;
+  --timeline-h: clamp(184px, 31vh, 292px);
+  --track-h-video: 54px;
+  --track-h-audio: 40px;
 
   /* Accent — the Velocis signature colour. */
   --accent: #7c5cff;
@@ -69,17 +70,17 @@
 }
 
 [data-theme="dark"] {
-  --bg: #0b0b10;
-  --surface: #13131b;
-  --surface-2: #1a1a24;
+  --bg: #07070b;
+  --surface: #12121a;
+  --surface-2: #191922;
   --surface-3: #22222e;
-  --border: #2a2a38;
-  --border-strong: #3a3a4c;
+  --border: #262633;
+  --border-strong: #35354a;
   --text: #f2f2f7;
-  --text-dim: #9c9cb0;
-  --text-faint: #6c6c80;
-  --shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
-  --stage-bg: #08080c;
+  --text-dim: #9a9aae;
+  --text-faint: #6a6a7e;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  --stage-bg: #0b0b11;
   --success: #3ddc97;
   --warn: #f5a524;
   --danger: #f0506e;
@@ -89,17 +90,17 @@
 }
 
 [data-theme="light"] {
-  --bg: #f4f4f8;
+  --bg: #ececf2;
   --surface: #ffffff;
-  --surface-2: #f7f7fb;
+  --surface-2: #f5f5fa;
   --surface-3: #ececf3;
-  --border: #dcdce6;
-  --border-strong: #c2c2d0;
+  --border: #dedee8;
+  --border-strong: #c4c4d2;
   --text: #16161d;
   --text-dim: #5c5c70;
   --text-faint: #8a8a9c;
-  --shadow: 0 8px 28px rgba(20, 20, 40, 0.14);
-  --stage-bg: #e6e6ee;
+  --shadow: 0 10px 26px rgba(20, 20, 40, 0.12);
+  --stage-bg: #e4e4ec;
   --success: #12946a;
   --warn: #b26a00;
   --danger: #d23b57;
@@ -112,8 +113,8 @@
   box-sizing: border-box;
 }
 
-/* `hidden` must win over the layout rules below: a stage empty-state that keeps
-   `display: grid` would sit on top of the video it is supposed to be replaced by. */
+/* `hidden` must win over the layout rules: an empty state that keeps `display:
+   grid` would sit on top of the very thing it is meant to make room for. */
 [hidden] {
   display: none !important;
 }
@@ -129,7 +130,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
-  font-size: var(--fs-400);
+  font-size: var(--fs-300);
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
@@ -148,20 +149,32 @@ textarea {
   border-radius: var(--r-sm);
 }
 
-/* --------------------------------------------------------------- app shell */
+/* ------------------------------------------------------------- app shell */
 
 .app {
   display: grid;
-  grid-template-rows: var(--header-h) 1fr auto;
+  grid-template-rows: var(--topbar-h) minmax(0, 1fr) auto;
+  gap: var(--gap);
+  padding: var(--gap);
   height: 100vh;
+  min-height: 0;
 }
 
-/* Dropping anywhere in the window is the expected gesture, so the whole shell
-   becomes the target and says so. */
+/* The one card primitive. Everything floats on the backdrop with the same
+   radius and border, so the eye reads five surfaces, not twenty boxes. */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Dropping anywhere in the window is the expected gesture. */
 .app[data-dropping="true"]::after {
   content: "Déposez pour importer";
   position: fixed;
-  inset: 12px;
+  inset: 10px;
   z-index: 90;
   border: 2px dashed var(--accent);
   border-radius: var(--r-2xl);
@@ -171,54 +184,24 @@ textarea {
   color: var(--text);
   font-size: var(--fs-500);
   font-weight: var(--fw-semibold);
-  letter-spacing: 0.02em;
   pointer-events: none;
 }
 
-.middle {
-  display: grid;
-  grid-template-columns: var(--sidebar-w) 1fr var(--inspector-w);
-  /* `minmax(0, 1fr)` rather than the implicit `auto` row: an auto row grows to
-     fit its content, which let the stage push the transport out of the window. */
-  grid-template-rows: minmax(0, 1fr);
-  min-height: 0;
-  border-top: 1px solid var(--border);
-}
+/* ----------------------------------------------------------------- top bar */
 
-.middle > * {
-  min-height: 0;
-}
-
-.middle[data-sidebar="collapsed"] {
-  grid-template-columns: 0 1fr var(--inspector-w);
-}
-
-.middle[data-inspector="collapsed"] {
-  grid-template-columns: var(--sidebar-w) 1fr 0;
-}
-
-.middle[data-sidebar="collapsed"][data-inspector="collapsed"] {
-  grid-template-columns: 0 1fr 0;
-}
-
-/* ------------------------------------------------------------------ header */
-
-.header {
+.topbar {
   display: flex;
   align-items: center;
   gap: var(--s-4);
-  padding: 0 var(--s-6);
-  background: var(--surface);
+  padding: 0 var(--s-4) 0 var(--s-5);
+  overflow: hidden;
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: var(--s-3);
-  font-weight: var(--fw-bold);
-  letter-spacing: 0.08em;
-  font-size: var(--fs-400);
-  text-transform: uppercase;
+  flex: none;
 }
 
 .brand-mark {
@@ -228,26 +211,24 @@ textarea {
   display: block;
 }
 
-.brand-sub {
-  font-size: var(--fs-100);
-  font-weight: var(--fw-medium);
-  letter-spacing: 0.14em;
-  color: var(--text-faint);
+.brand-name {
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.1em;
+  font-size: var(--fs-300);
   text-transform: uppercase;
-  border-left: 1px solid var(--border-strong);
-  padding-left: var(--s-4);
-  margin-left: var(--s-1);
 }
 
 .project-name {
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--r-md);
-  padding: var(--s-1) var(--s-3);
-  font-size: var(--fs-400);
+  border-radius: var(--r-lg);
+  padding: var(--s-2) var(--s-4);
+  font-size: var(--fs-300);
   font-weight: var(--fw-semibold);
-  min-width: 120px;
-  max-width: 320px;
+  min-width: 110px;
+  max-width: 300px;
+  height: 30px;
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
 }
 
 .project-name:hover {
@@ -264,6 +245,48 @@ textarea {
   flex: 1;
 }
 
+.sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  flex: none;
+}
+
+/* Segmented control (project format). */
+.segmented {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  flex: none;
+}
+
+.segmented .toggle {
+  height: 24px;
+  min-width: 36px;
+  padding: 0 var(--s-3);
+  border: none;
+  background: transparent;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  font-size: var(--fs-200);
+  color: var(--text-dim);
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.segmented .toggle:hover {
+  color: var(--text);
+}
+
+.segmented .toggle[aria-pressed="true"] {
+  background: var(--surface-3);
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+}
+
 /* ----------------------------------------------------------------- buttons */
 
 .btn {
@@ -271,18 +294,18 @@ textarea {
   align-items: center;
   justify-content: center;
   gap: var(--s-3);
-  height: 32px;
-  padding: 0 var(--s-5);
-  border-radius: var(--r-md);
+  height: 30px;
+  padding: 0 var(--s-4);
+  border-radius: var(--r-lg);
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text);
   cursor: pointer;
-  font-size: var(--fs-300);
+  font-size: var(--fs-200);
   font-weight: var(--fw-medium);
+  white-space: nowrap;
   transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease),
     transform var(--t-fast) var(--ease);
-  white-space: nowrap;
 }
 
 .btn:hover:not(:disabled) {
@@ -295,7 +318,7 @@ textarea {
 }
 
 .btn:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: not-allowed;
 }
 
@@ -304,6 +327,7 @@ textarea {
   border-color: var(--accent);
   color: var(--accent-contrast);
   font-weight: var(--fw-semibold);
+  padding: 0 var(--s-6);
 }
 
 .btn.primary:hover:not(:disabled) {
@@ -316,8 +340,21 @@ textarea {
 }
 
 .btn.icon {
-  width: 32px;
+  width: 30px;
   padding: 0;
+}
+
+/* Panel toggles read as pressed/unpressed at a glance. */
+.btn[aria-pressed="false"] {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-faint);
+}
+
+.btn[aria-pressed="true"] {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  color: var(--text);
 }
 
 .btn.ghost {
@@ -325,51 +362,203 @@ textarea {
   border-color: transparent;
 }
 
-.btn.ghost:hover:not(:disabled) {
-  background: var(--surface-3);
-}
-
 .btn.small {
   height: 26px;
-  font-size: var(--fs-200);
+  font-size: var(--fs-100);
   padding: 0 var(--s-4);
+  border-radius: var(--r-md);
+}
+
+.btn.small.icon {
+  width: 26px;
+  padding: 0;
+  font-size: var(--fs-200);
+  font-weight: var(--fw-semibold);
+}
+
+.btn.block {
+  width: 100%;
 }
 
 .btn svg {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
   flex: none;
 }
 
-/* ---------------------------------------------------------------- sidebar */
+/* Compact icon button used in panel headers. */
+.icon-btn {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
 
-.sidebar {
-  background: var(--surface);
-  border-right: 1px solid var(--border);
+.icon-btn:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.icon-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* --------------------------------------------------------------- workspace */
+
+.middle {
+  display: flex;
+  gap: var(--gap);
+  min-height: 0;
+  min-width: 0;
+}
+
+/* Collapsing removes the card entirely, so no gap is left behind. */
+.middle[data-sidebar="collapsed"] .sidebar {
+  display: none;
+}
+
+.middle[data-inspector="collapsed"] .inspector {
+  display: none;
+}
+
+/* -------------------------------------------------------------------- rail */
+
+.rail {
+  flex: 0 0 var(--rail-w);
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-4) 0;
+}
+
+.rail-btn {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease);
+}
+
+.rail-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.rail-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.rail-btn[aria-selected="true"] {
+  background: var(--accent-soft);
+  color: var(--accent-2);
+  border-color: rgba(124, 92, 255, 0.4);
+}
+
+.rail-spacer {
+  flex: 1;
+}
+
+/* ------------------------------------------------------------ side panels */
+
+.sidebar {
+  flex: 0 0 var(--sidebar-w);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
-.tabs {
+.inspector {
+  flex: 0 0 var(--inspector-w);
   display: flex;
-  gap: var(--s-1);
-  padding: var(--s-3) var(--s-3) 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel-head {
+  height: 38px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: 0 var(--s-3) 0 var(--s-5);
   border-bottom: 1px solid var(--border);
 }
 
-.tab {
+.panel-title {
+  font-size: var(--fs-100);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.panel {
   flex: 1;
-  height: 30px;
-  border: none;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--s-4);
+}
+
+.panel::-webkit-scrollbar,
+.track-heads::-webkit-scrollbar,
+.ruler-wrap::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.panel::-webkit-scrollbar-thumb,
+.track-heads::-webkit-scrollbar-thumb,
+.ruler-wrap::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: var(--r-full);
+}
+
+.panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Compact tab pills, used by the inspector header. */
+.tabs {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tab {
+  height: 26px;
+  padding: 0 var(--s-3);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
   background: transparent;
   color: var(--text-dim);
-  border-radius: var(--r-md) var(--r-md) 0 0;
   cursor: pointer;
-  font-size: var(--fs-200);
+  font-size: var(--fs-100);
   font-weight: var(--fw-medium);
-  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
 
 .tab:hover {
@@ -379,143 +568,17 @@ textarea {
 
 .tab[aria-selected="true"] {
   color: var(--text);
-  border-bottom-color: var(--accent);
+  background: var(--surface-3);
   font-weight: var(--fw-semibold);
 }
 
-.panel {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: var(--s-6);
-}
-
-.panel[hidden] {
-  display: none;
-}
-
-.dropzone {
-  border: 1.5px dashed var(--border-strong);
-  border-radius: var(--r-lg);
-  padding: var(--s-10) var(--s-6);
-  text-align: center;
-  color: var(--text-dim);
-  font-size: var(--fs-200);
-  cursor: pointer;
-  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
-}
-
-.dropzone:hover,
-.dropzone[data-over="true"] {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--text);
-}
-
-.dropzone strong {
-  display: block;
-  color: var(--text);
-  font-size: var(--fs-400);
-  margin-bottom: var(--s-2);
-}
-
-.media-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--s-4);
-  margin-top: var(--s-6);
-}
-
-.media-card {
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  overflow: hidden;
-  background: var(--surface-2);
-  cursor: grab;
-  transition: border-color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
-}
-
-.media-card:hover {
-  border-color: var(--accent);
-  transform: translateY(-1px);
-}
-
-.media-card .thumb {
-  aspect-ratio: 16 / 9;
-  background: var(--surface-3) center/cover no-repeat;
-  display: grid;
-  place-items: center;
-  color: var(--text-faint);
-}
-
-.media-card .meta {
-  padding: var(--s-3) var(--s-4);
-  font-size: var(--fs-100);
-  color: var(--text-dim);
-  display: flex;
-  justify-content: space-between;
-  gap: var(--s-3);
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.media-card .meta > * {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.media-card .meta:first-of-type {
-  padding-bottom: 0;
-}
-
-.media-card .meta b {
-  color: var(--text);
-  font-weight: var(--fw-medium);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.hint {
-  color: var(--text-dim);
-  font-size: var(--fs-200);
-  margin: var(--s-6) 0 var(--s-2);
-}
-
-.hint.why {
-  color: var(--text-faint);
-  font-size: var(--fs-100);
-  font-style: italic;
-}
-
-.chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-3);
-  margin-top: var(--s-4);
-}
-
-.chip {
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  border-radius: var(--r-full);
-  padding: var(--s-2) var(--s-4);
-  font-size: var(--fs-100);
-  color: var(--text-dim);
-  cursor: pointer;
-}
-
-.chip:hover {
-  border-color: var(--accent);
-  color: var(--text);
-}
-
-/* ------------------------------------------------------------------ stage */
+/* ------------------------------------------------------------------- stage */
 
 .stage-wrap {
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  overflow: hidden;
   background: var(--stage-bg);
 }
 
@@ -525,13 +588,10 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--s-8);
+  padding: var(--s-4);
   position: relative;
 }
 
-/* The stage is a fixed viewport and the project is letterboxed inside it, which
-   is the only layout that behaves at every aspect ratio without the box ever
-   overflowing the space available. */
 .stage-inner {
   position: relative;
   width: 100%;
@@ -539,16 +599,15 @@ textarea {
   min-height: 0;
   display: grid;
   place-items: center;
-  background: transparent;
 }
 
-/* The canvas is sized in script to the project's aspect ratio, so the stage
-   letterboxes it without any layout guessing. */
+/* Sized in script to the project aspect ratio, so the stage letterboxes it
+   without any layout guessing. */
 #stage-canvas {
   display: block;
   background: #000;
   border-radius: var(--r-md);
-  box-shadow: var(--shadow);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
 }
 
 .stage-empty {
@@ -556,7 +615,7 @@ textarea {
   inset: 0;
   display: grid;
   place-items: center;
-  padding: var(--s-10);
+  padding: var(--s-8);
 }
 
 .welcome {
@@ -564,12 +623,12 @@ textarea {
   gap: var(--s-4);
   justify-items: center;
   text-align: center;
-  max-width: 540px;
+  max-width: 520px;
 }
 
 .welcome .mark {
-  width: 60px;
-  height: 60px;
+  width: 56px;
+  height: 56px;
   filter: drop-shadow(0 8px 24px rgba(124, 92, 255, 0.35));
 }
 
@@ -578,12 +637,12 @@ textarea {
   font-size: var(--fs-700);
   font-weight: var(--fw-semibold);
   letter-spacing: -0.3px;
-  color: #ececf4;
+  color: var(--text);
 }
 
 .welcome p {
   margin: 0;
-  color: #8b8ba0;
+  color: var(--text-dim);
   font-size: var(--fs-300);
   line-height: 1.65;
 }
@@ -598,7 +657,7 @@ textarea {
 
 .welcome .shortcuts {
   margin-top: var(--s-4);
-  color: #6c6c80;
+  color: var(--text-faint);
   font-size: var(--fs-100);
   display: flex;
   gap: var(--s-5);
@@ -612,34 +671,29 @@ textarea {
   border-bottom-width: 2px;
   border-radius: var(--r-sm);
   padding: 1px 5px;
-  color: #9c9cb0;
+  color: var(--text-dim);
 }
 
-.stage-empty > div {
-  max-width: 460px;
-}
-
-.stage-empty strong {
-  display: block;
-  color: #d8d8e4;
-  font-size: var(--fs-500);
-  margin-bottom: var(--s-2);
-}
+/* --------------------------------------------------------------- transport */
 
 .transport {
+  flex: none;
   display: flex;
   align-items: center;
   gap: var(--s-4);
-  padding: var(--s-3) var(--s-6);
-  background: var(--surface);
+  height: 42px;
+  padding: 0 var(--s-4);
   border-top: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 0 0 var(--r-xl) var(--r-xl);
 }
 
 .timecode {
   font-family: var(--font-mono);
   font-size: var(--fs-200);
   color: var(--text-dim);
-  min-width: 118px;
+  min-width: 112px;
+  white-space: nowrap;
 }
 
 .timecode b {
@@ -647,9 +701,13 @@ textarea {
   font-weight: var(--fw-medium);
 }
 
+.timecode .dim {
+  opacity: 0.5;
+}
+
 .scrub {
   flex: 1;
-  height: 22px;
+  height: 20px;
   display: flex;
   align-items: center;
   cursor: pointer;
@@ -683,44 +741,63 @@ textarea {
   box-shadow: 0 0 0 1px var(--accent);
 }
 
-/* -------------------------------------------------------------- inspector */
-
-.inspector {
-  background: var(--surface);
-  border-left: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
+.live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
+  font-size: var(--fs-100);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  white-space: nowrap;
 }
 
-.inspector .tabs {
-  padding-top: var(--s-3);
+.live-badge .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success);
+  animation: live-pulse 2.4s var(--ease) infinite;
 }
+
+@keyframes live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(61, 220, 151, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(61, 220, 151, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(61, 220, 151, 0);
+  }
+}
+
+/* ---------------------------------------------------------------- inspector */
 
 .field {
-  margin-bottom: var(--s-6);
+  margin-bottom: var(--s-5);
 }
 
 .field > label {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
+  gap: var(--s-3);
   font-size: var(--fs-200);
   color: var(--text-dim);
-  margin-bottom: var(--s-3);
+  margin-bottom: var(--s-2);
 }
 
 .field > label b {
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: var(--fs-200);
+  font-size: var(--fs-100);
   font-weight: var(--fw-medium);
 }
 
 input[type="range"] {
   width: 100%;
-  height: 18px;
+  height: 16px;
   appearance: none;
   background: transparent;
   cursor: pointer;
@@ -734,9 +811,9 @@ input[type="range"]::-webkit-slider-runnable-track {
 
 input[type="range"]::-webkit-slider-thumb {
   appearance: none;
-  width: 14px;
-  height: 14px;
-  margin-top: -5px;
+  width: 13px;
+  height: 13px;
+  margin-top: -4.5px;
   border-radius: 50%;
   background: var(--accent);
   border: 2px solid var(--surface);
@@ -750,8 +827,8 @@ input[type="range"]::-moz-range-track {
 }
 
 input[type="range"]::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
   border-radius: 50%;
   background: var(--accent);
   border: 2px solid var(--surface);
@@ -762,17 +839,18 @@ input[type="number"],
 select,
 textarea {
   width: 100%;
-  height: 30px;
+  height: 28px;
   padding: 0 var(--s-4);
   border-radius: var(--r-md);
   border: 1px solid var(--border);
   background: var(--surface-2);
+  font-size: var(--fs-200);
 }
 
 textarea {
   height: auto;
-  min-height: 76px;
-  padding: var(--s-4);
+  min-height: 68px;
+  padding: var(--s-3) var(--s-4);
   resize: vertical;
   font-family: var(--font);
 }
@@ -785,12 +863,6 @@ textarea:focus {
   border-color: var(--accent);
 }
 
-.grid-2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--s-4);
-}
-
 .toggle-row {
   display: flex;
   gap: var(--s-2);
@@ -799,14 +871,19 @@ textarea:focus {
 
 .toggle {
   flex: 1;
-  min-width: 62px;
-  height: 30px;
+  min-width: 58px;
+  height: 28px;
   border: 1px solid var(--border);
   background: var(--surface-2);
   border-radius: var(--r-md);
   cursor: pointer;
-  font-size: var(--fs-200);
+  font-size: var(--fs-100);
   color: var(--text-dim);
+}
+
+.toggle:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
 }
 
 .toggle[aria-pressed="true"] {
@@ -820,7 +897,7 @@ textarea:focus {
   display: flex;
   align-items: center;
   gap: var(--s-4);
-  padding: var(--s-4) 0;
+  padding: var(--s-3) 0;
   border-bottom: 1px solid var(--border);
 }
 
@@ -837,76 +914,263 @@ textarea:focus {
   color: var(--text-dim);
   font-size: var(--fs-200);
   text-align: center;
-  padding: var(--s-10) var(--s-6);
+  padding: var(--s-10) var(--s-4);
   line-height: 1.7;
 }
 
 .empty-state strong {
   display: block;
   color: var(--text);
-  font-size: var(--fs-400);
+  font-size: var(--fs-300);
   margin-bottom: var(--s-2);
 }
 
-/* --------------------------------------------------------------- timeline */
+/* ----------------------------------------------------------------- sidebar */
+
+.dropzone {
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--r-lg);
+  padding: var(--s-6) var(--s-4);
+  text-align: center;
+  color: var(--text-dim);
+  font-size: var(--fs-100);
+  cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease);
+}
+
+.dropzone:hover,
+.dropzone[data-over="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.dropzone strong {
+  display: block;
+  color: var(--text);
+  font-size: var(--fs-300);
+  margin-bottom: var(--s-1);
+}
+
+.media-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-3);
+  margin-top: var(--s-4);
+}
+
+.media-card {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  background: var(--surface-2);
+  cursor: grab;
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+
+.media-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+}
+
+.media-card .thumb {
+  aspect-ratio: 16 / 9;
+  background: var(--surface-3) center/cover no-repeat;
+  display: grid;
+  place-items: center;
+  color: var(--text-faint);
+}
+
+.media-card .thumb svg {
+  width: 20px;
+  height: 20px;
+}
+
+.media-card .meta {
+  padding: var(--s-1) var(--s-3) var(--s-2);
+  font-size: var(--fs-100);
+  color: var(--text-dim);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.media-card .meta b {
+  color: var(--text);
+  font-weight: var(--fw-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.media-card .meta span {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+}
+
+.media-card .add {
+  position: absolute;
+  top: var(--s-2);
+  right: var(--s-2);
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  background: rgba(10, 10, 16, 0.72);
+  backdrop-filter: blur(6px);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--t-fast) var(--ease), background var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease);
+}
+
+.media-card:hover .add,
+.media-card .add:focus-visible {
+  opacity: 1;
+}
+
+.media-card .add:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: scale(1.08);
+}
+
+.media-card .add svg {
+  width: 13px;
+  height: 13px;
+}
+
+.hint {
+  color: var(--text-dim);
+  font-size: var(--fs-100);
+  margin: var(--s-4) 0 var(--s-2);
+}
+
+.hint.why {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+}
+
+.chip {
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  border-radius: var(--r-full);
+  padding: 3px var(--s-4);
+  font-size: var(--fs-100);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+
+.chip:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.chip:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* ---------------------------------------------------------------- timeline */
 
 .timeline {
-  height: var(--timeline-h);
-  background: var(--surface);
-  border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  overflow: hidden;
+  height: var(--timeline-h);
+  min-height: 150px;
+}
+
+/* Grab strip: the user decides how to split the height between the picture and
+   the timeline, instead of living with a fixed ratio. */
+.timeline-resize {
+  flex: none;
+  height: 7px;
+  display: grid;
+  place-items: center;
+  cursor: ns-resize;
+}
+
+.timeline-resize::before {
+  content: "";
+  width: 44px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border-strong);
+  opacity: 0.45;
+  transition: opacity var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+
+.timeline-resize:hover::before {
+  opacity: 1;
+  background: var(--accent);
 }
 
 .timeline-bar {
+  flex: none;
+  height: 38px;
   display: flex;
   align-items: center;
-  gap: var(--s-3);
-  padding: var(--s-3) var(--s-6);
+  gap: var(--s-2);
+  padding: 0 var(--s-3);
   border-bottom: 1px solid var(--border);
 }
 
 .timeline-bar .sep {
-  width: 1px;
-  height: 20px;
-  background: var(--border);
-  margin: 0 var(--s-2);
+  margin: 0 var(--s-1);
 }
 
 .zoom {
   display: flex;
   align-items: center;
-  gap: var(--s-3);
+  gap: var(--s-2);
   margin-left: auto;
   color: var(--text-dim);
-  font-size: var(--fs-200);
+  font-size: var(--fs-100);
 }
 
 .zoom input[type="range"] {
-  width: 120px;
+  width: 110px;
 }
 
 .timeline-body {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 148px 1fr;
+  grid-template-columns: 132px minmax(0, 1fr);
 }
 
 .track-heads {
   border-right: 1px solid var(--border);
   overflow: hidden;
   background: var(--surface-2);
+  border-radius: 0 0 0 var(--r-xl);
 }
 
 .track-head {
   height: var(--track-h-video);
   border-bottom: 1px solid var(--border);
-  padding: var(--s-3) var(--s-4);
+  padding: var(--s-2) var(--s-3);
   display: flex;
   flex-direction: column;
-  gap: var(--s-2);
+  gap: var(--s-1);
   justify-content: center;
 }
 
@@ -915,11 +1179,12 @@ textarea:focus {
 }
 
 .track-head .name {
-  font-size: var(--fs-200);
-  font-weight: var(--fw-medium);
+  font-size: var(--fs-100);
+  font-weight: var(--fw-semibold);
   display: flex;
   align-items: center;
-  gap: var(--s-3);
+  gap: var(--s-2);
+  color: var(--text);
 }
 
 .track-head .name span {
@@ -929,38 +1194,28 @@ textarea:focus {
 }
 
 .track-head .name svg {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   flex: none;
-  color: var(--text-dim);
-}
-
-.track-head .actions svg {
-  width: 13px;
-  height: 13px;
-}
-
-.track-head .kind {
-  font-size: var(--fs-100);
   color: var(--text-faint);
 }
 
 .track-head .actions {
   display: flex;
-  gap: var(--s-1);
+  gap: 1px;
 }
 
 .track-head .actions button {
-  width: 22px;
-  height: 20px;
+  width: 20px;
+  height: 18px;
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-faint);
   border-radius: var(--r-sm);
   cursor: pointer;
-  font-size: var(--fs-100);
   display: grid;
   place-items: center;
+  padding: 0;
 }
 
 .track-head .actions button:hover {
@@ -969,18 +1224,22 @@ textarea:focus {
 }
 
 .track-head .actions button[aria-pressed="true"] {
-  color: var(--accent);
+  color: var(--accent-2);
   background: var(--accent-soft);
+}
+
+.track-head .actions svg {
+  width: 11px;
+  height: 11px;
 }
 
 .ruler-wrap {
   position: relative;
   overflow: auto;
+  min-width: 0;
   min-height: 0;
 }
 
-/* Everything that scrolls horizontally lives in one content box, so the ruler,
-   the lanes and the playhead can never drift out of alignment. */
 .tl-content {
   position: relative;
   min-width: 100%;
@@ -1003,7 +1262,7 @@ textarea:focus {
   bottom: 0;
   border-left: 1px solid var(--border);
   padding-left: var(--s-2);
-  font-size: var(--fs-100);
+  font-size: 9.5px;
   color: var(--text-faint);
   font-family: var(--font-mono);
   display: flex;
@@ -1013,17 +1272,6 @@ textarea:focus {
 
 .tracks {
   position: relative;
-}
-
-/* The playhead spans the ruler and every lane. */
-.playhead {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: var(--accent);
-  pointer-events: none;
-  z-index: 6;
 }
 
 .track-lane {
@@ -1047,10 +1295,29 @@ textarea:focus {
   opacity: 0.4;
 }
 
+.track-lane[data-drop="true"] {
+  background-color: rgba(124, 92, 255, 0.09);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.lane-hint {
+  position: absolute;
+  left: var(--s-5);
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 9.5px;
+  color: var(--text-faint);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-full);
+  padding: 2px 8px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 .clip {
   position: absolute;
-  top: 4px;
-  bottom: 4px;
+  top: 3px;
+  bottom: 3px;
   border-radius: var(--r-md);
   border: 1px solid rgba(255, 255, 255, 0.14);
   overflow: hidden;
@@ -1058,7 +1325,7 @@ textarea:focus {
   user-select: none;
   min-width: 6px;
   background: var(--clip-video);
-  transition: box-shadow var(--t-fast) var(--ease);
+  transition: box-shadow var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
 }
 
 [data-theme="light"] .clip {
@@ -1074,8 +1341,18 @@ textarea:focus {
 }
 
 .clip[aria-selected="true"] {
-  box-shadow: 0 0 0 2px var(--accent), 0 0 0 4px rgba(109, 94, 248, 0.28);
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 4px rgba(124, 92, 255, 0.28);
   z-index: 3;
+}
+
+/* Hover must not use `transform`: the drag itself writes an inline transform. */
+.clip:hover {
+  border-color: rgba(255, 255, 255, 0.42);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18), 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="light"] .clip:hover {
+  border-color: rgba(0, 0, 0, 0.3);
 }
 
 .clip .filmstrip {
@@ -1099,8 +1376,8 @@ textarea:focus {
   left: 0;
   top: 0;
   right: 0;
-  padding: var(--s-2) var(--s-3) var(--s-6);
-  font-size: var(--fs-100);
+  padding: var(--s-1) var(--s-2) var(--s-5);
+  font-size: 9.5px;
   font-weight: var(--fw-medium);
   color: #fff;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
@@ -1108,7 +1385,6 @@ textarea:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
   pointer-events: none;
-  /* A scrim keeps the name readable over any frame of the filmstrip. */
   background: linear-gradient(180deg, rgba(0, 0, 0, 0.62) 0%, rgba(0, 0, 0, 0) 100%);
 }
 
@@ -1120,11 +1396,11 @@ textarea:focus {
 
 .clip .badges {
   position: absolute;
-  left: var(--s-3);
-  bottom: var(--s-2);
+  left: var(--s-2);
+  bottom: 2px;
   display: flex;
   gap: var(--s-2);
-  font-size: 9px;
+  font-size: 8.5px;
   color: #fff;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
   pointer-events: none;
@@ -1134,16 +1410,32 @@ textarea:focus {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 9px;
+  width: 11px;
   cursor: ew-resize;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.22), transparent);
   opacity: 0;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.04));
   transition: opacity var(--t-fast) var(--ease);
+}
+
+.clip .handle::after {
+  content: "";
+  position: absolute;
+  top: 30%;
+  bottom: 30%;
+  left: 4px;
+  width: 2px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.75);
 }
 
 .clip .handle.right {
   right: 0;
-  background: linear-gradient(270deg, rgba(255, 255, 255, 0.22), transparent);
+  background: linear-gradient(270deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.04));
+}
+
+.clip .handle.right::after {
+  left: auto;
+  right: 4px;
 }
 
 .clip:hover .handle,
@@ -1155,16 +1447,17 @@ textarea:focus {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  height: 20px;
+  height: 18px;
   display: grid;
   place-items: center;
-  font-size: 9px;
+  font-size: 8.5px;
   color: var(--text-faint);
   background: transparent;
   border: 1px dashed var(--border-strong);
   border-radius: var(--r-sm);
   cursor: pointer;
   opacity: 0;
+  transition: opacity var(--t-fast) var(--ease);
 }
 
 .gap:hover {
@@ -1173,15 +1466,47 @@ textarea:focus {
   border-color: var(--accent);
 }
 
+.playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--accent);
+  pointer-events: none;
+  z-index: 6;
+}
+
 .playhead::before {
   content: "";
   position: absolute;
   top: 0;
-  left: -5px;
-  width: 11px;
-  height: 11px;
+  left: -6px;
+  width: 13px;
+  height: 13px;
   background: var(--accent);
   clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+.snap-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--accent-2);
+  box-shadow: 0 0 0 1px rgba(192, 132, 252, 0.35), 0 0 12px rgba(192, 132, 252, 0.6);
+  pointer-events: none;
+  z-index: 7;
+}
+
+.snap-line::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-2);
 }
 
 /* ------------------------------------------------------------------ modal */
@@ -1197,7 +1522,7 @@ textarea:focus {
 }
 
 .modal {
-  width: min(560px, calc(100vw - 48px));
+  width: min(540px, calc(100vw - 48px));
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-2xl);
@@ -1215,14 +1540,14 @@ textarea:focus {
 .modal .sub {
   color: var(--text-dim);
   font-size: var(--fs-200);
-  margin-bottom: var(--s-8);
+  margin-bottom: var(--s-6);
 }
 
 .option-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--s-4);
-  margin-bottom: var(--s-8);
+  gap: var(--s-3);
+  margin-bottom: var(--s-6);
 }
 
 .option {
@@ -1230,8 +1555,9 @@ textarea:focus {
   border: 1px solid var(--border);
   background: var(--surface-2);
   border-radius: var(--r-lg);
-  padding: var(--s-4) var(--s-5);
+  padding: var(--s-3) var(--s-4);
   cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
 }
 
 .option:hover {
@@ -1245,14 +1571,14 @@ textarea:focus {
 
 .option b {
   display: block;
-  font-size: var(--fs-300);
+  font-size: var(--fs-200);
 }
 
 .option span {
   display: block;
   color: var(--text-dim);
-  font-size: var(--fs-100);
-  margin-top: 2px;
+  font-size: 10px;
+  margin-top: 1px;
 }
 
 .progress {
@@ -1260,7 +1586,7 @@ textarea:focus {
   border-radius: var(--r-full);
   background: var(--surface-3);
   overflow: hidden;
-  margin: var(--s-4) 0;
+  margin: var(--s-3) 0;
 }
 
 .progress > i {
@@ -1274,15 +1600,15 @@ textarea:focus {
 .modal-actions {
   display: flex;
   justify-content: flex-end;
-  gap: var(--s-4);
-  margin-top: var(--s-8);
+  gap: var(--s-3);
+  margin-top: var(--s-6);
 }
 
 .modal-actions .left {
   margin-right: auto;
 }
 
-/* ------------------------------------------------------------------ toasts */
+/* ----------------------------------------------------------------- toasts */
 
 .toasts {
   position: fixed;
@@ -1291,7 +1617,7 @@ textarea:focus {
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
-  gap: var(--s-3);
+  gap: var(--s-2);
   z-index: 80;
   pointer-events: none;
 }
@@ -1301,19 +1627,19 @@ textarea:focus {
   border: 1px solid var(--border-strong);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow);
-  padding: var(--s-4) var(--s-6);
+  padding: var(--s-3) var(--s-5);
   font-size: var(--fs-200);
   display: flex;
   align-items: center;
-  gap: var(--s-4);
+  gap: var(--s-3);
   animation: toast-in var(--t-slow) var(--ease);
   pointer-events: auto;
   max-width: 620px;
 }
 
 .toast .dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--accent);
   flex: none;
@@ -1333,7 +1659,7 @@ textarea:focus {
   border: none;
   color: var(--text-dim);
   cursor: pointer;
-  font-size: var(--fs-200);
+  font-size: var(--fs-100);
   text-decoration: underline;
 }
 
@@ -1360,174 +1686,20 @@ textarea:focus {
   border: 0;
 }
 
-/* Media thumbnails carry their own "add to timeline" action: dragging is precise
-   but undiscoverable, a button is not. */
-.media-card {
-  position: relative;
-}
-
-.media-card .add {
-  position: absolute;
-  top: var(--s-3);
-  right: var(--s-3);
-  width: 26px;
-  height: 26px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 50%;
-  background: rgba(10, 10, 16, 0.72);
-  backdrop-filter: blur(6px);
-  color: #fff;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity var(--t-fast) var(--ease), background var(--t-fast) var(--ease),
-    transform var(--t-fast) var(--ease);
-}
-
-.media-card:hover .add,
-.media-card .add:focus-visible {
-  opacity: 1;
-}
-
-.media-card .add:hover {
-  background: var(--accent);
-  border-color: var(--accent);
-  transform: scale(1.08);
-}
-
-.media-card .add svg {
-  width: 14px;
-  height: 14px;
-}
-
-/* Live-composition indicator: it replaces the old "render the preview" button,
-   so the stage should say what it is doing. */
-.live-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-3);
-  font-size: var(--fs-100);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  white-space: nowrap;
-}
-
-.live-badge .dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--success);
-  box-shadow: 0 0 0 0 rgba(61, 220, 151, 0.55);
-  animation: live-pulse 2.4s var(--ease) infinite;
-}
-
-@keyframes live-pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(61, 220, 151, 0.5);
-  }
-  70% {
-    box-shadow: 0 0 0 7px rgba(61, 220, 151, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(61, 220, 151, 0);
+/* Narrow windows: keep the picture usable by shrinking the panels first. */
+@media (max-width: 1280px) {
+  :root {
+    --sidebar-w: 268px;
+    --inspector-w: 262px;
   }
 }
 
-/* ----------------------------------------------------------------- timeline feel */
-
-/* Trim handles: wide enough to grab without aiming, and visible before hover. */
-.clip .handle {
-  width: 12px;
-  /* Hidden until the clip is hovered or selected: handles on every clip at once
-     read as noise, but a selected clip must show that it can be trimmed. */
-  opacity: 0;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.04));
-}
-
-.clip .handle::after {
-  content: "";
-  position: absolute;
-  top: 30%;
-  bottom: 30%;
-  left: 5px;
-  width: 2px;
-  border-radius: 1px;
-  background: rgba(255, 255, 255, 0.75);
-}
-
-.clip .handle.right {
-  background: linear-gradient(270deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.04));
-}
-
-.clip .handle.right::after {
-  left: auto;
-  right: 5px;
-}
-
-.clip:hover .handle {
-  opacity: 1;
-}
-
-/* Hover must not use `transform`: the drag itself writes an inline transform. */
-.clip:hover {
-  border-color: rgba(255, 255, 255, 0.42);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18), 0 6px 16px rgba(0, 0, 0, 0.35);
-}
-
-[data-theme="light"] .clip:hover {
-  border-color: rgba(0, 0, 0, 0.3);
-}
-
-/* Landing guide while a clip is being snapped to an edge or the playhead. */
-.snap-line {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: var(--accent-2);
-  box-shadow: 0 0 0 1px rgba(192, 132, 252, 0.35), 0 0 12px rgba(192, 132, 252, 0.6);
-  pointer-events: none;
-  z-index: 7;
-}
-
-.snap-line::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: -3px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--accent-2);
-}
-
-/* An empty track states what belongs there instead of being a void. */
-.lane-hint {
-  position: absolute;
-  left: var(--s-6);
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: var(--fs-100);
-  color: var(--text-faint);
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--r-full);
-  padding: 3px 10px;
-  pointer-events: none;
-  white-space: nowrap;
-}
-
-/* The lane a dragged clip would land on. */
-.track-lane[data-drop="true"] {
-  background-color: rgba(124, 92, 255, 0.09);
-  box-shadow: inset 0 0 0 1px var(--accent);
-}
-
-/* The playhead gets a grab handle so it reads as draggable. */
-.playhead::before {
-  width: 13px;
-  height: 13px;
-  left: -6px;
+@media (max-width: 1080px) {
+  :root {
+    --sidebar-w: 240px;
+    --inspector-w: 240px;
+  }
+  .brand-name {
+    display: none;
+  }
 }

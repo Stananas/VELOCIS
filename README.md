@@ -24,6 +24,7 @@ bash tools/demo.sh
 | **Effets** | luminosité, contraste, saturation, température, teinte, gamma, flou, netteté, noir et blanc, sépia, inversion, vignette, incrustation couleur |
 | **Texte** | piste dédiée, taille, gras et italique, couleur, fond, fondus |
 | **Aperçu** | composition **temps réel** dans le navigateur : lecture fluide, déplacement du curseur, réglages visibles à l'instant |
+| **Interface** | disposition en cartes, panneaux repliables (`[` et `]`), timeline redimensionnable, thème clair et sombre |
 | **Préparation** | à l'import, un proxy à keyframes rapprochées est préparé en arrière-plan (480–540p) : c'est ce qui rend le scrub instantané. L'export continue de lire le fichier d'origine |
 | **Export** | 480p → 4K, MP4 (H.264/AAC) et WebM (VP9/Opus), quatre niveaux de qualité, progression et annulation |
 | **Encodage** | accélération matérielle détectée par sonde réelle (VAAPI, NVENC), repli automatique sur le processeur |
