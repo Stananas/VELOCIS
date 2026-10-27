@@ -133,6 +133,16 @@ try {
       }
     }
     c.close();
+  } else if (cmd === "viewport") {
+    const c = await send("Runtime.evaluate", {}, args[0]);
+    await c.call("Emulation.setDeviceMetricsOverride", {
+      width: Number(args[1]),
+      height: Number(args[2]),
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    c.close();
+    console.log(`viewport ${args[1]}x${args[2]}`);
   } else if (cmd === "realclick") {
     // A trusted click: browsers only grant autoplay and other user-gated
     // behaviour to real input events, not to element.click().

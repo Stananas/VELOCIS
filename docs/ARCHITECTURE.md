@@ -202,6 +202,18 @@ La feuille de style commence donc par une règle `[hidden]` explicite.
 La ligne centrale a dû être fixée à `minmax(0, 1fr)` : sans cela, la scène
 poussait la barre de lecture hors de la fenêtre.
 
+**La timeline est une bande pleine largeur, pas une carte.** Les pistes n'ont pas
+de colonne d'en-tête : leurs commandes (son, masquer, verrou, supprimer)
+n'apparaissent qu'au survol, pour qu'une timeline au repos ne montre que des
+clips. Une piste vide propose elle-même l'action suivante (« + Ajouter du son »),
+et les rangées texte/son existent même quand la piste correspondante n'a pas
+encore été créée.
+
+**La sélection par rectangle teste le DOM, pas les mathématiques.** Pendant le
+glisser, chaque clip est comparé à la bande en coordonnées écran : un élément sait
+déjà où il est, et refaire le calcul du temps serait une seconde source de vérité
+à maintenir. Un clic sans déplacement vide la sélection.
+
 **La disposition est en cartes insérées.** Cinq surfaces (barre, rail, panneau,
 scène, timeline) flottent sur un fond plus sombre avec un rythme de 10 px. Les
 panneaux se replient entièrement — pas une largeur nulle, un `display: none` —

@@ -689,7 +689,7 @@ function updateTransport() {
 function followPlayhead() {
   const wrap = document.querySelector(".ruler-wrap");
   if (!wrap) return;
-  const x = (S.playhead / US) * S.zoom;
+  const x = 14 + (S.playhead / US) * S.zoom;
   const left = wrap.scrollLeft;
   const right = left + wrap.clientWidth;
   if (x < left + 40) wrap.scrollLeft = Math.max(0, x - 40);
@@ -912,56 +912,66 @@ function renderTimeline() {
   const total = timelineTotal();
   const width = Math.max((total / US) * pxPerSec, 400);
 
-  $("track-heads").innerHTML = p.tracks
-    .map((track) => {
-      const isAudio = track.kind === "audio";
-      return `<div class="track-head ${isAudio ? "audio" : ""}" data-track-head="${esc(track.id)}">
-        <div class="name">${isAudio ? ICONS.audio : ICONS.video}<span>${esc(track.name)}</span></div>
-        <div class="actions">
-          <button data-track-toggle="muted" data-track="${esc(track.id)}" aria-pressed="${track.muted}"
-            title="${track.muted ? "Rétablir le son" : "Couper le son de la piste"}" aria-label="Couper le son">${ICONS.mute}</button>
-          <button data-track-toggle="hidden" data-track="${esc(track.id)}" aria-pressed="${track.hidden}"
-            title="${track.hidden ? "Afficher dans l'aperçu" : "Masquer de l'aperçu"}" aria-label="Masquer">${track.hidden ? ICONS.eyeOff : ICONS.eye}</button>
-          <button data-track-toggle="locked" data-track="${esc(track.id)}" aria-pressed="${track.locked}"
-            title="${track.locked ? "Déverrouiller" : "Verrouiller la piste"}" aria-label="Verrouiller">${track.locked ? ICONS.lock : ICONS.unlock}</button>
-          <button data-track-remove="${esc(track.id)}" title="Supprimer la piste" aria-label="Supprimer la piste">${ICONS.trash}</button>
-        </div>
-      </div>`;
-    })
-    .join("");
-
   const lanes = p.tracks
     .map((track) => {
       const isAudio = track.kind === "audio";
-      const clips = track.clips
-        .map((clip) => renderClip(clip, track, pxPerSec))
-        .join("");
-          const gaps = renderGaps(track, pxPerSec);
+      const clips = track.clips.map((clip) => renderClip(clip, track, pxPerSec)).join("");
+      const gaps = renderGaps(track, pxPerSec);
       const hint = track.clips.length
         ? ""
-        : `<div class="lane-hint">${isAudio ? "Déposez un son ici" : "Déposez un média ici"}</div>`;
-      return `<div class="track-lane ${isAudio ? "audio" : ""}" data-lane="${esc(track.id)}" data-hidden="${track.hidden}">${hint}${clips}${gaps}</div>`;
+        : `<button class="lane-add" data-add-row="${esc(track.id)}"><span>+</span>${
+            isAudio ? "Ajouter du son" : "Ajouter du média"
+          }</button>`;
+      return `<div class="track-lane ${isAudio ? "audio" : ""}" data-lane="${esc(track.id)}" data-hidden="${track.hidden}">${renderLaneTools(
+        track
+      )}${hint}${clips}${gaps}</div>`;
     })
     .join("");
 
+  // Placeholder rows: an editor should always offer the next action, even when
+  // no text or audio track exists yet.
+  const hasText = p.tracks.some((track) => track.name === "Texte");
+  const hasAudio = p.tracks.some((track) => track.kind === "audio");
+  const placeholders = [
+    hasText
+      ? ""
+      : `<div class="track-lane" data-placeholder="text"><button class="lane-add" data-add-row="text"><span>+</span>Ajouter du texte</button></div>`,
+    hasAudio
+      ? ""
+      : `<div class="track-lane audio" data-placeholder="audio"><button class="lane-add" data-add-row="audio"><span>+</span>Ajouter du son</button></div>`,
+  ].join("");
+
   const content = `<div class="tl-content" id="tl-content" style="width:${width}px">
     <div class="ruler" id="ruler">${renderRuler(total, pxPerSec)}</div>
-    <div class="tracks" id="tracks">${lanes}</div>
+    <div class="tracks" id="tracks">${lanes}${placeholders}</div>
     <div class="playhead" id="playhead" style="left:${(S.playhead / US) * pxPerSec}px"></div>
     <div class="snap-line" id="snap-line" hidden></div>
   </div>`;
 
   const wrap = document.querySelector(".ruler-wrap");
   const scrollLeft = wrap.scrollLeft;
-  wrap.querySelectorAll(":scope > *").forEach((n) => n.remove());
+  wrap.querySelectorAll(":scope > *").forEach((node) => node.remove());
   wrap.insertAdjacentHTML("beforeend", content);
   wrap.scrollLeft = scrollLeft;
-  $("tracks").scrollTop = $("track-heads").scrollTop;
+}
+
+/** Track controls, shown on hover only. */
+function renderLaneTools(track) {
+  return `<div class="lane-tools">
+    <button data-track-toggle="muted" data-track="${esc(track.id)}" aria-pressed="${track.muted}" title="Couper le son">${ICONS.mute}</button>
+    <button data-track-toggle="hidden" data-track="${esc(track.id)}" aria-pressed="${track.hidden}" title="Masquer dans l'aperçu">${
+      track.hidden ? ICONS.eyeOff : ICONS.eye
+    }</button>
+    <button data-track-toggle="locked" data-track="${esc(track.id)}" aria-pressed="${track.locked}" title="Verrouiller la piste">${
+      track.locked ? ICONS.lock : ICONS.unlock
+    }</button>
+    <button data-track-remove="${esc(track.id)}" title="Supprimer la piste">${ICONS.trash}</button>
+  </div>`;
 }
 
 function renderRuler(total, pxPerSec) {
-  const steps = [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
-  const step = steps.find((s) => s * pxPerSec >= 76) ?? 600;
+  const steps = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
+  const step = steps.find((s) => s * pxPerSec >= 64) ?? 600;
   let out = "";
   for (let t = 0; t <= total / US; t += step) {
     out += `<div class="tick" style="left:${t * pxPerSec}px">${fmtTime(t * US)}</div>`;
@@ -1086,6 +1096,89 @@ function showSnapLine(at) {
 function hideSnapLine() {
   const line = $("snap-line");
   if (line) line.hidden = true;
+}
+
+/* Rubber-band selection: press in empty timeline space and drag a rectangle,
+   exactly like selecting files on a desktop. */
+let marquee = null;
+
+function startMarquee(event) {
+  const content = $("tl-content");
+  if (!content) return;
+  const rect = content.getBoundingClientRect();
+  const element = document.createElement("div");
+  element.className = "marquee";
+  element.hidden = true;
+  content.appendChild(element);
+  marquee = {
+    startX: event.clientX,
+    startY: event.clientY,
+    originX: event.clientX - rect.left,
+    originY: event.clientY - rect.top,
+    base: event.ctrlKey || event.metaKey || event.shiftKey ? [...S.selected] : [],
+    moved: false,
+    element,
+  };
+  try {
+    content.setPointerCapture(event.pointerId);
+  } catch {
+    /* synthetic or released pointer */
+  }
+  event.preventDefault();
+}
+
+function updateMarquee(event) {
+  if (!marquee) return;
+  const content = $("tl-content");
+  if (!content) return;
+  const rect = content.getBoundingClientRect();
+  const x = event.clientX - rect.left;
+  const y = event.clientY - rect.top;
+  const left = Math.min(marquee.originX, x);
+  const top = Math.min(marquee.originY, y);
+  const width = Math.abs(x - marquee.originX);
+  const height = Math.abs(y - marquee.originY);
+
+  if (width > 3 || height > 3) marquee.moved = true;
+  marquee.element.hidden = !marquee.moved;
+  marquee.element.style.left = `${left}px`;
+  marquee.element.style.top = `${top}px`;
+  marquee.element.style.width = `${width}px`;
+  marquee.element.style.height = `${height}px`;
+
+  // Hit-test the DOM rather than recomputing timeline maths: clips already know
+  // where they are on screen.
+  const band = {
+    left: Math.min(marquee.startX, event.clientX),
+    right: Math.max(marquee.startX, event.clientX),
+    top: Math.min(marquee.startY, event.clientY),
+    bottom: Math.max(marquee.startY, event.clientY),
+  };
+  const picked = [...document.querySelectorAll(".clip")]
+    .filter((element) => {
+      const box = element.getBoundingClientRect();
+      return (
+        box.right > band.left && box.left < band.right && box.bottom > band.top && box.top < band.bottom
+      );
+    })
+    .map((element) => element.dataset.clip);
+
+  S.selected = [...new Set([...marquee.base, ...picked])];
+  for (const element of document.querySelectorAll(".clip")) {
+    element.setAttribute("aria-selected", String(isSelected(element.dataset.clip)));
+  }
+}
+
+function endMarquee() {
+  if (!marquee) return;
+  marquee.element.remove();
+  const moved = marquee.moved;
+  const base = marquee.base;
+  marquee = null;
+  if (!moved) S.selected = base; // a plain click clears the selection
+  renderTimeline();
+  renderInspector();
+  renderEffectsCatalog();
 }
 
 /** Highlight the lane a dragged clip would land on. */
@@ -1710,9 +1803,7 @@ function bindEvents() {
   // One delegation root: the ruler, lanes and clips are re-created on every
   // render, so listeners must live on a node that survives.
   const wrap = document.querySelector(".ruler-wrap");
-  wrap.addEventListener("scroll", () => {
-    $("track-heads").scrollTop = wrap.scrollTop;
-  });
+  wrap.addEventListener("scroll", () => {});
 
   wrap.addEventListener("pointerdown", (e) => {
     const ruler = e.target.closest(".ruler");
@@ -1735,12 +1826,9 @@ function bindEvents() {
 
     const clipEl = e.target.closest(".clip");
     if (!clipEl) {
-      // Only the ruler moves the playhead. Clicking a lane used to seek too, but
-      // it made every stray click jump the timeline: deselecting is enough.
-      S.selected = [];
-      renderTimeline();
-      renderInspector();
-      renderEffectsCatalog();
+      // Only the ruler moves the playhead; empty space starts a rubber band.
+      if (e.target.closest("button")) return;
+      startMarquee(e);
       return;
     }
     const handle = e.target.closest("[data-handle]");
@@ -1781,13 +1869,69 @@ function bindEvents() {
     startClipDrag(e, clipEl, handle ? (handle.dataset.handle === "left" ? "trim-left" : "trim-right") : "move");
   });
 
-  wrap.addEventListener("pointermove", (e) => updateClipDrag(e));
-  wrap.addEventListener("pointerup", () => endClipDrag());
-  wrap.addEventListener("pointercancel", () => endClipDrag());
+  wrap.addEventListener("pointermove", (e) => {
+    if (marquee) updateMarquee(e);
+    else updateClipDrag(e);
+  });
+  wrap.addEventListener("pointerup", () => {
+    if (marquee) endMarquee();
+    else endClipDrag();
+  });
+  wrap.addEventListener("pointercancel", () => {
+    if (marquee) endMarquee();
+    else endClipDrag();
+  });
 
   wrap.addEventListener("click", (e) => {
     const gap = e.target.closest("[data-gap-track]");
-    if (gap) closeGap(gap.dataset.gapTrack, Number(gap.dataset.gapEnd));
+    if (gap) {
+      closeGap(gap.dataset.gapTrack, Number(gap.dataset.gapEnd));
+      return;
+    }
+
+    const toggle = e.target.closest("[data-track-toggle]");
+    if (toggle) {
+      const track = project().tracks.find((t) => t.id === toggle.dataset.track);
+      if (track) {
+        mutate("/api/track/update", {
+          track_id: toggle.dataset.track,
+          [toggle.dataset.trackToggle]: !track[toggle.dataset.trackToggle],
+        });
+      }
+      return;
+    }
+
+    const remove = e.target.closest("[data-track-remove]");
+    if (remove) {
+      if (confirm("Supprimer cette piste et les clips qu'elle contient ?")) {
+        mutate("/api/track/remove", { track_id: remove.dataset.trackRemove });
+      }
+      return;
+    }
+
+    // "Add media / text / sound" rows.
+    const add = e.target.closest("[data-add-row]");
+    if (add) {
+      const what = add.dataset.addRow;
+      if (what === "text") {
+        S.tab = "text";
+        if (!S.panel) setPanel(true);
+        renderSidebar();
+        $("text-content").focus();
+      } else if (what === "audio") {
+        S.tab = "media";
+        if (!S.panel) setPanel(true);
+        renderSidebar();
+        $("file-input").accept = "audio/*";
+        $("file-input").click();
+      } else {
+        S.tab = "media";
+        if (!S.panel) setPanel(true);
+        renderSidebar();
+        $("file-input").accept = "video/*,audio/*,image/*";
+        $("file-input").click();
+      }
+    }
   });
 
   // Drop media straight onto a lane: the drop point is the insert point.
@@ -1804,24 +1948,6 @@ function bindEvents() {
     await mutate("/api/clip/place", { track_id: lane, asset_id: assetId, timeline_start: at });
   });
 
-  $("track-heads").addEventListener("click", (e) => {
-    const toggle = e.target.closest("[data-track-toggle]");
-    if (toggle) {
-      const track = project().tracks.find((t) => t.id === toggle.dataset.track);
-      const field = toggle.dataset.trackToggle;
-      mutate("/api/track/update", {
-        track_id: toggle.dataset.track,
-        [field]: !track[field],
-      });
-      return;
-    }
-    const remove = e.target.closest("[data-track-remove]");
-    if (remove) {
-      if (!confirm("Supprimer cette piste et les clips qu'elle contient ?")) return;
-      mutate("/api/track/remove", { track_id: remove.dataset.trackRemove });
-    }
-  });
-
   $("btn-add-video-track").onclick = () => mutate("/api/track/add", { kind: "video" });
   $("btn-add-audio-track").onclick = () => mutate("/api/track/add", { kind: "audio" });
   $("btn-split").onclick = splitAtPlayhead;
@@ -1830,6 +1956,16 @@ function bindEvents() {
   $("btn-fit").onclick = fitTimeline;
   $("zoom").oninput = (e) => {
     S.zoom = Number(e.target.value);
+    renderTimeline();
+  };
+  $("btn-zoom-in").onclick = () => {
+    S.zoom = clamp(S.zoom * 1.3, 6, 320);
+    $("zoom").value = String(Math.round(S.zoom));
+    renderTimeline();
+  };
+  $("btn-zoom-out").onclick = () => {
+    S.zoom = clamp(S.zoom / 1.3, 6, 320);
+    $("zoom").value = String(Math.round(S.zoom));
     renderTimeline();
   };
 

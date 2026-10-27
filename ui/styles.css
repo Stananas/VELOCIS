@@ -155,10 +155,18 @@ textarea {
 
 .app {
   display: grid;
-  grid-template-rows: var(--topbar-h) minmax(0, 1fr) auto;
-  gap: var(--gap);
-  padding: var(--gap);
+  grid-template-rows: minmax(0, 1fr) auto;
   height: 100vh;
+  min-height: 0;
+}
+
+/* The editing area floats as cards; the timeline is a full-width band at the
+   bottom, the way an editor's timeline is meant to read. */
+.workspace {
+  display: grid;
+  grid-template-rows: var(--topbar-h) minmax(0, 1fr);
+  gap: var(--gap);
+  padding: var(--gap) var(--gap) 0;
   min-height: 0;
 }
 
@@ -1161,11 +1169,14 @@ textarea:focus {
 /* ---------------------------------------------------------------- timeline */
 
 .timeline {
+  position: relative;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
   height: var(--timeline-h);
   min-height: 150px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  overflow: hidden;
 }
 
 /* Grab strip: the user decides how to split the height between the picture and
@@ -1195,112 +1206,22 @@ textarea:focus {
 
 .timeline-bar {
   flex: none;
-  height: 38px;
+  height: 34px;
   display: flex;
   align-items: center;
   gap: var(--s-2);
-  padding: 0 var(--s-3);
-  border-bottom: 1px solid var(--border);
+  padding: 0 var(--s-4);
 }
 
 .timeline-bar .sep {
-  margin: 0 var(--s-1);
-}
-
-.zoom {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  margin-left: auto;
-  color: var(--text-dim);
-  font-size: var(--fs-100);
-}
-
-.zoom input[type="range"] {
-  width: 110px;
+  margin: 0 var(--s-2);
 }
 
 .timeline-body {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 132px minmax(0, 1fr);
-}
-
-.track-heads {
-  border-right: 1px solid var(--border);
-  overflow: hidden;
-  background: var(--surface-2);
-  border-radius: 0 0 0 var(--r-xl);
-}
-
-.track-head {
-  height: var(--track-h-video);
-  border-bottom: 1px solid var(--border);
-  padding: var(--s-2) var(--s-3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-1);
-  justify-content: center;
-}
-
-.track-head.audio {
-  height: var(--track-h-audio);
-}
-
-.track-head .name {
-  font-size: var(--fs-100);
-  font-weight: var(--fw-semibold);
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  color: var(--text);
-}
-
-.track-head .name span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.track-head .name svg {
-  width: 12px;
-  height: 12px;
-  flex: none;
-  color: var(--text-faint);
-}
-
-.track-head .actions {
-  display: flex;
-  gap: 1px;
-}
-
-.track-head .actions button {
-  width: 20px;
-  height: 18px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--text-faint);
-  border-radius: var(--r-sm);
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-  padding: 0;
-}
-
-.track-head .actions button:hover {
-  background: var(--surface-3);
-  color: var(--text);
-}
-
-.track-head .actions button[aria-pressed="true"] {
-  color: var(--accent-2);
-  background: var(--accent-soft);
-}
-
-.track-head .actions svg {
-  width: 11px;
-  height: 11px;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .ruler-wrap {
@@ -1308,6 +1229,8 @@ textarea:focus {
   overflow: auto;
   min-width: 0;
   min-height: 0;
+  /* A little gutter so clips and the playhead do not hug the window edge. */
+  padding-left: 14px;
 }
 
 .tl-content {
@@ -1315,46 +1238,51 @@ textarea:focus {
   min-width: 100%;
 }
 
+/* Ruler: ticks as small dashes above the labels, no full-height lines. */
 .ruler {
-  height: 24px;
+  height: 26px;
   position: sticky;
   top: 0;
   z-index: 5;
-  border-bottom: 1px solid var(--border);
   cursor: pointer;
   overflow: hidden;
-  background: var(--surface-2);
+  background: var(--surface);
 }
 
 .ruler .tick {
   position: absolute;
   top: 0;
-  bottom: 0;
-  border-left: 1px solid var(--border);
-  padding-left: var(--s-2);
+  height: 100%;
+  border-left: none;
+  padding-left: 0;
   font-size: 9.5px;
   color: var(--text-faint);
   font-family: var(--font-mono);
   display: flex;
-  align-items: center;
+  align-items: flex-end;
+  padding-bottom: 5px;
   pointer-events: none;
+}
+
+.ruler .tick::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  width: 1px;
+  height: 6px;
+  background: var(--border-strong);
 }
 
 .tracks {
   position: relative;
 }
 
+/* Lanes are plain rows: no grid lines, just a hairline between them. */
 .track-lane {
   height: var(--track-h-video);
   border-bottom: 1px solid var(--border);
   position: relative;
-  background: repeating-linear-gradient(
-    90deg,
-    transparent 0,
-    transparent 59px,
-    var(--border) 59px,
-    var(--border) 60px
-  );
 }
 
 .track-lane.audio {
@@ -1366,30 +1294,99 @@ textarea:focus {
 }
 
 .track-lane[data-drop="true"] {
-  background-color: rgba(124, 92, 255, 0.09);
+  background: rgba(124, 92, 255, 0.08);
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 
-.lane-hint {
+/* Track controls float over the left edge and only appear on hover, so an idle
+   timeline shows nothing but clips. */
+.lane-tools {
   position: absolute;
-  left: var(--s-5);
+  left: var(--s-2);
+  top: var(--s-2);
+  z-index: 4;
+  display: flex;
+  gap: 1px;
+  padding: 2px;
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--surface-3) 88%, transparent);
+  backdrop-filter: blur(6px);
+  opacity: 0;
+  transition: opacity var(--t-fast) var(--ease);
+}
+
+.track-lane:hover .lane-tools,
+.lane-tools:focus-within {
+  opacity: 1;
+}
+
+.lane-tools button {
+  width: 20px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.lane-tools button:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.lane-tools button[aria-pressed="true"] {
+  color: var(--accent-2);
+  background: var(--accent-soft);
+}
+
+.lane-tools svg {
+  width: 11px;
+  height: 11px;
+}
+
+/* Empty track: the row itself offers the next action, like "Add text" rows. */
+.lane-add {
+  position: absolute;
+  left: var(--s-4);
   top: 50%;
   transform: translateY(-50%);
-  font-size: 9.5px;
-  color: var(--text-faint);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
+  height: 30px;
+  max-width: calc(100% - 24px);
+  padding: 0 var(--s-5) 0 var(--s-4);
   border: 1px dashed var(--border-strong);
-  border-radius: var(--r-full);
-  padding: 2px 8px;
-  pointer-events: none;
-  white-space: nowrap;
+  border-radius: var(--r-lg);
+  background: transparent;
+  color: var(--text-faint);
+  font-size: var(--fs-200);
+  cursor: pointer;
+  transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease),
+    background var(--t-fast) var(--ease);
+}
+
+.lane-add:hover {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.lane-add span {
+  font-size: 14px;
+  line-height: 1;
 }
 
 .clip {
   position: absolute;
-  top: 3px;
-  bottom: 3px;
+  top: 4px;
+  bottom: 4px;
   border-radius: var(--r-md);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   overflow: hidden;
   cursor: grab;
   user-select: none;
@@ -1399,7 +1396,7 @@ textarea:focus {
 }
 
 [data-theme="light"] .clip {
-  border-color: rgba(0, 0, 0, 0.12);
+  border-color: rgba(0, 0, 0, 0.1);
 }
 
 .clip.audio {
@@ -1411,18 +1408,18 @@ textarea:focus {
 }
 
 .clip[aria-selected="true"] {
-  box-shadow: 0 0 0 2px var(--accent), 0 0 0 4px rgba(124, 92, 255, 0.28);
+  box-shadow: 0 0 0 2px var(--accent);
   z-index: 3;
 }
 
 /* Hover must not use `transform`: the drag itself writes an inline transform. */
 .clip:hover {
-  border-color: rgba(255, 255, 255, 0.42);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18), 0 6px 16px rgba(0, 0, 0, 0.35);
+  border-color: rgba(255, 255, 255, 0.4);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16), 0 6px 16px rgba(0, 0, 0, 0.32);
 }
 
 [data-theme="light"] .clip:hover {
-  border-color: rgba(0, 0, 0, 0.3);
+  border-color: rgba(0, 0, 0, 0.28);
 }
 
 .clip .filmstrip {
@@ -1446,7 +1443,7 @@ textarea:focus {
   left: 0;
   top: 0;
   right: 0;
-  padding: var(--s-1) var(--s-2) var(--s-5);
+  padding: var(--s-1) var(--s-2) var(--s-4);
   font-size: 9.5px;
   font-weight: var(--fw-medium);
   color: #fff;
@@ -1455,7 +1452,7 @@ textarea:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.62) 0%, rgba(0, 0, 0, 0) 100%);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.6) 0%, rgba(0, 0, 0, 0) 100%);
 }
 
 [data-theme="light"] .clip .label {
@@ -1480,7 +1477,7 @@ textarea:focus {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 11px;
+  width: 10px;
   cursor: ew-resize;
   opacity: 0;
   background: linear-gradient(90deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.04));
@@ -1492,7 +1489,7 @@ textarea:focus {
   position: absolute;
   top: 30%;
   bottom: 30%;
-  left: 4px;
+  left: 3px;
   width: 2px;
   border-radius: 1px;
   background: rgba(255, 255, 255, 0.75);
@@ -1505,7 +1502,7 @@ textarea:focus {
 
 .clip .handle.right::after {
   left: auto;
-  right: 4px;
+  right: 3px;
 }
 
 .clip:hover .handle,
@@ -1536,6 +1533,7 @@ textarea:focus {
   border-color: var(--accent);
 }
 
+/* Playhead: a thin line with a small rounded grip in the ruler. */
 .playhead {
   position: absolute;
   top: 0;
@@ -1549,12 +1547,12 @@ textarea:focus {
 .playhead::before {
   content: "";
   position: absolute;
-  top: 0;
-  left: -6px;
-  width: 13px;
+  top: 4px;
+  left: -3px;
+  width: 7px;
   height: 13px;
+  border-radius: 3px;
   background: var(--accent);
-  clip-path: polygon(0 0, 100% 0, 50% 100%);
 }
 
 .snap-line {
@@ -1577,6 +1575,106 @@ textarea:focus {
   height: 7px;
   border-radius: 50%;
   background: var(--accent-2);
+}
+
+/* Rubber-band selection, drawn in timeline coordinates. */
+.marquee {
+  position: absolute;
+  z-index: 9;
+  border: 1px solid var(--accent);
+  background: rgba(124, 92, 255, 0.16);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+/* Zoom and "fit timeline" sit at the bottom-right, over the tracks. */
+.timeline-controls {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.zoom {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: 2px 4px;
+  border-radius: var(--r-full);
+  background: color-mix(in srgb, var(--surface-3) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.38);
+}
+
+.zoom input[type="range"] {
+  width: 92px;
+}
+
+.zoom-btn {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.zoom-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.timeline-fit {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
+  height: 30px;
+  padding: 0 var(--s-3) 0 var(--s-4);
+  border-radius: var(--r-full);
+  border: 1px solid var(--border-strong);
+  background: color-mix(in srgb, var(--surface-3) 88%, transparent);
+  backdrop-filter: blur(8px);
+  color: var(--text-dim);
+  font-size: var(--fs-200);
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.38);
+  transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease);
+}
+
+.timeline-fit:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.timeline-fit:active {
+  transform: scale(0.97);
+}
+
+.timeline-fit svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.timeline-fit kbd {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  line-height: 1;
+  padding: 3px 4px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--r-sm);
+  color: var(--text-faint);
 }
 
 /* ------------------------------------------------------------------ modal */
@@ -1955,17 +2053,9 @@ textarea:focus {
 
 /* ------------------------------------------------------------------ timeline fit */
 
-.timeline {
-  position: relative;
-}
-
 /* Floating action at the bottom-right of the timeline, like the "fit timeline"
    control editors put there: it belongs to the timeline, not to the toolbar. */
 .timeline-fit {
-  position: absolute;
-  right: 12px;
-  bottom: 10px;
-  z-index: 8;
   display: inline-flex;
   align-items: center;
   gap: var(--s-3);

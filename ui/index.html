@@ -12,6 +12,7 @@
   </head>
   <body>
     <div class="app">
+      <div class="workspace">
       <!-- =================================================== top bar ===== -->
       <header class="topbar card">
         <div class="brand">
@@ -194,45 +195,50 @@
           <div class="panel" id="inspector-body"></div>
         </aside>
       </div>
+      </div>
 
       <!-- ================================================== timeline ===== -->
-      <section class="timeline card" aria-label="Timeline">
+      <section class="timeline" aria-label="Timeline">
         <div class="timeline-resize" id="timeline-resize" role="separator" aria-label="Redimensionner la timeline" title="Glisser pour redimensionner"></div>
         <div class="timeline-bar">
           <button class="btn small icon" id="btn-add-video-track" title="Ajouter une piste vidéo">+V</button>
           <button class="btn small icon" id="btn-add-audio-track" title="Ajouter une piste audio">+A</button>
           <span class="sep"></span>
-          <button class="btn small" id="btn-split" title="Découper au curseur (S)">Découper</button>
-          <button class="btn small" id="btn-delete" title="Supprimer le clip sélectionné (Suppr)">Supprimer</button>
-          <button class="btn small" id="btn-duplicate" title="Dupliquer (Ctrl+D)">Dupliquer</button>
-          <span class="sep"></span>
-          <div class="zoom">
-            <span aria-hidden="true">−</span>
-            <input
-              type="range"
-              id="zoom"
-              min="6"
-              max="320"
-              step="1"
-              value="64"
-              aria-label="Zoom de la timeline"
-            />
-            <span aria-hidden="true">+</span>
-          </div>
+          <button class="btn small icon" id="btn-split" title="Découper au curseur (S)" aria-label="Découper">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+              <path d="M10 3v14" /><path d="M6.5 6L3.5 10l3 4" /><path d="M13.5 6l3 4-3 4" />
+            </svg>
+          </button>
+          <button class="btn small icon" id="btn-delete" title="Supprimer la sélection (Suppr)" aria-label="Supprimer">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 6h12M8 6V4h4v2M6 6l.8 9h6.4L14 6" />
+            </svg>
+          </button>
+          <button class="btn small icon" id="btn-duplicate" title="Dupliquer (Ctrl+D)" aria-label="Dupliquer">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
+              <rect x="7" y="7" width="9" height="9" rx="2" /><path d="M13 7V5a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2" />
+            </svg>
+          </button>
         </div>
 
         <div class="timeline-body">
-          <div class="track-heads" id="track-heads"></div>
           <div class="ruler-wrap" id="ruler-wrap"></div>
         </div>
 
-        <button class="timeline-fit" id="btn-fit" title="Ajuster la chronologie (Ctrl+0)">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-            <path d="M2 5V3h2M14 5V3h-2M2 11v2h2M14 11v2h-2M5.5 8h5" />
-          </svg>
-          Ajuster la chronologie
-          <kbd>Ctrl</kbd><kbd>0</kbd>
-        </button>
+        <div class="timeline-controls">
+          <div class="zoom">
+            <button class="zoom-btn" id="btn-zoom-out" aria-label="Dézoomer">−</button>
+            <input type="range" id="zoom" min="6" max="320" step="1" value="64" aria-label="Zoom de la timeline" />
+            <button class="zoom-btn" id="btn-zoom-in" aria-label="Zoomer">+</button>
+          </div>
+          <button class="timeline-fit" id="btn-fit" title="Ajuster la chronologie (Ctrl+0)">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+              <path d="M2 5V3h2M14 5V3h-2M2 11v2h2M14 11v2h-2M5.5 8h5" />
+            </svg>
+            Ajuster la chronologie
+            <kbd>Ctrl</kbd><kbd>0</kbd>
+          </button>
+        </div>
       </section>
     </div>
 
