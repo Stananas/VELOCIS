@@ -1343,6 +1343,25 @@ function queueClipPatch(patch, label) {
 
 function bindEvents() {
   // --- header
+  $("btn-new").onclick = async () => {
+    const p = project();
+    const ratio = p.canvas.width / p.canvas.height;
+    const aspects = { landscape16x9: 16 / 9, portrait9x16: 9 / 16, square1x1: 1, portrait4x5: 4 / 5 };
+    const aspect = Object.entries(aspects).find(([, value]) => Math.abs(value - ratio) < 0.02)?.[0] ?? "landscape16x9";
+    const confirmed = confirm(
+      "Créer un nouveau projet ?\n\nLa timeline actuelle est remplacée. La version précédente reste dans la sauvegarde automatique."
+    );
+    if (!confirmed) return;
+    const snap = await act(() =>
+      api.post("/api/project/new", { name: "Projet sans titre", aspect, height: p.canvas.height })
+    );
+    if (!snap) return;
+    S.selection = null;
+    S.playhead = 0;
+    applySnapshot(snap);
+    toast("Nouveau projet", "success");
+  };
+
   $("btn-undo").onclick = () => mutate("/api/history/undo");
   $("btn-redo").onclick = () => mutate("/api/history/redo");
   $("btn-export").onclick = exportModal;
