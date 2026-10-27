@@ -5,6 +5,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
@@ -282,22 +283,26 @@ pub async fn import(
 /// A browser cannot hand out the path of a picked file, so the bytes travel to
 /// the service instead. The file is written once into the media directory and
 /// then treated exactly like a file imported by path.
+/// Import an uploaded file.
+///
+/// The body is **streamed to disk**: a 7 GB source would otherwise have to fit in
+/// the service's memory, and the browser could not even read it into an
+/// ArrayBuffer. Streaming is what makes "drop any file" true.
 pub async fn upload(
     State(app): AppState,
     headers: axum::http::HeaderMap,
-    body: axum::body::Bytes,
+    request: axum::extract::Request,
 ) -> ApiResult<ImportResult> {
     let filename = headers
         .get("x-filename")
         .and_then(|v| v.to_str().ok())
+        .map(percent_decode)
         .map(|v| {
             // Keep the name, drop any directory component a client might send.
             v.rsplit(['/', '\\']).next().unwrap_or("media").to_string()
         })
+        .filter(|v| !v.trim().is_empty())
         .unwrap_or_else(|| "media".to_string());
-    if body.is_empty() {
-        return Err(ApiError(anyhow::anyhow!("fichier vide")));
-    }
 
     let safe: String = filename
         .chars()
@@ -313,7 +318,30 @@ pub async fn upload(
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(&dest, &body)?;
+
+    let mut file = tokio::fs::File::create(&dest).await?;
+    let mut stream = request.into_body().into_data_stream();
+    let mut total: u64 = 0;
+    while let Some(chunk) = stream.next().await {
+        let bytes = match chunk {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                // A broken transfer must not leave a truncated file behind.
+                drop(file);
+                let _ = std::fs::remove_file(&dest);
+                return Err(ApiError(anyhow::anyhow!("transfert interrompu : {error}")));
+            }
+        };
+        tokio::io::AsyncWriteExt::write_all(&mut file, &bytes).await?;
+        total += bytes.len() as u64;
+    }
+    tokio::io::AsyncWriteExt::flush(&mut file).await?;
+    drop(file);
+
+    if total == 0 {
+        let _ = std::fs::remove_file(&dest);
+        return Err(ApiError(anyhow::anyhow!("fichier vide")));
+    }
 
     match crate::state::import_file(&app, &dest) {
         Ok(asset) => {
@@ -341,6 +369,27 @@ pub async fn upload(
             Err(ApiError(err))
         }
     }
+}
+
+/// Decode the `%XX` sequences the client uses to pass non-ASCII names through a
+/// header, which is otherwise limited to latin-1.
+fn percent_decode(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let hex = std::str::from_utf8(&bytes[i + 1..i + 3]).ok();
+            if let Some(byte) = hex.and_then(|h| u8::from_str_radix(h, 16).ok()) {
+                out.push(byte);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 // ------------------------------------------------------------------- clips
@@ -522,6 +571,50 @@ pub async fn clip_duplicate(
 ) -> ApiResult<Snapshot> {
     app.mutate("Dupliquer un clip", move |p| {
         ops::duplicate_clip(p, &body.clip_id).map(|_| ())
+    })?;
+    Ok(Json(app.snapshot()))
+}
+
+#[derive(Deserialize)]
+pub struct ClipIds {
+    pub clip_ids: Vec<String>,
+    #[serde(default = "default_true")]
+    pub ripple: bool,
+}
+
+/// Delete a selection as a single undoable step.
+pub async fn clip_delete_many(
+    State(app): AppState,
+    Json(body): Json<ClipIds>,
+) -> ApiResult<Snapshot> {
+    app.mutate("Supprimer la sélection", move |p| {
+        ops::delete_many(p, &body.clip_ids, body.ripple)
+    })?;
+    Ok(Json(app.snapshot()))
+}
+
+pub async fn clip_duplicate_many(
+    State(app): AppState,
+    Json(body): Json<ClipIds>,
+) -> ApiResult<Snapshot> {
+    app.mutate("Dupliquer la sélection", move |p| {
+        ops::duplicate_many(p, &body.clip_ids).map(|_| ())
+    })?;
+    Ok(Json(app.snapshot()))
+}
+
+#[derive(Deserialize)]
+pub struct MoveMany {
+    pub clip_ids: Vec<String>,
+    pub delta: Micros,
+}
+
+pub async fn clip_move_many(
+    State(app): AppState,
+    Json(body): Json<MoveMany>,
+) -> ApiResult<Snapshot> {
+    app.mutate("Déplacer la sélection", move |p| {
+        ops::move_many(p, &body.clip_ids, body.delta)
     })?;
     Ok(Json(app.snapshot()))
 }

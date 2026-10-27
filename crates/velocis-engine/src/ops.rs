@@ -495,6 +495,132 @@ pub fn set_speed(project: &mut Project, clip_id: &str, speed: f64) -> Result<()>
     Ok(())
 }
 
+/// Delete several clips as one operation, so undo restores them together.
+pub fn delete_many(project: &mut Project, ids: &[ClipId], ripple: bool) -> Result<()> {
+    if ids.is_empty() {
+        bail!("aucun clip sélectionné");
+    }
+    for track in project.tracks.iter_mut() {
+        let mut removed: Vec<(Micros, Micros)> = track
+            .clips
+            .iter()
+            .filter(|clip| ids.contains(&clip.id))
+            .map(|clip| (clip.timeline.start, clip.timeline.duration))
+            .collect();
+        if removed.is_empty() {
+            continue;
+        }
+        track.clips.retain(|clip| !ids.contains(&clip.id));
+        if ripple {
+            // Close the gaps from right to left so earlier shifts do not move the
+            // ranges we are about to close.
+            removed.sort_by_key(|(start, _)| *start);
+            for (start, duration) in removed.iter().rev() {
+                for clip in track.clips.iter_mut() {
+                    if clip.timeline.start >= *start {
+                        clip.timeline.start = (clip.timeline.start - duration).max(0);
+                    }
+                }
+            }
+        }
+        track.normalize();
+    }
+    Ok(())
+}
+
+/// Duplicate several clips, keeping them grouped after their originals.
+pub fn duplicate_many(project: &mut Project, ids: &[ClipId]) -> Result<Vec<ClipId>> {
+    if ids.is_empty() {
+        bail!("aucun clip sélectionné");
+    }
+    let mut created = Vec::with_capacity(ids.len());
+    for id in ids {
+        created.push(duplicate_clip(project, id)?);
+    }
+    Ok(created)
+}
+
+/// Shift several clips by the same delta, pushing the clips they land on.
+///
+/// The group keeps its internal spacing: only the clips that are *not* part of
+/// the selection are displaced, which is what dragging a multi-selection should
+/// feel like.
+pub fn move_many(project: &mut Project, ids: &[ClipId], delta: Micros) -> Result<()> {
+    if ids.is_empty() {
+        bail!("aucun clip sélectionné");
+    }
+    let earliest = project
+        .tracks
+        .iter()
+        .flat_map(|track| track.clips.iter())
+        .filter(|clip| ids.contains(&clip.id))
+        .map(|clip| clip.timeline.start)
+        .min()
+        .ok_or_else(|| anyhow::anyhow!("clip introuvable"))?;
+    let delta = delta.max(-earliest);
+    if delta == 0 {
+        return Ok(());
+    }
+
+    for track in project.tracks.iter_mut() {
+        for clip in track.clips.iter_mut() {
+            if ids.contains(&clip.id) {
+                clip.timeline.start += delta;
+            }
+        }
+        track.normalize();
+
+        // Push anything the group landed on, then make sure the displaced clips
+        // do not overlap each other.
+        let occupied: Vec<(Micros, Micros)> = track
+            .clips
+            .iter()
+            .filter(|clip| ids.contains(&clip.id))
+            .map(|clip| (clip.timeline.start, clip.timeline.end()))
+            .collect();
+        if occupied.is_empty() {
+            continue;
+        }
+        let mut starts: Vec<(usize, Micros)> = Vec::new();
+        for (index, clip) in track.clips.iter().enumerate() {
+            if ids.contains(&clip.id) {
+                continue;
+            }
+            let mut start = clip.timeline.start;
+            for _ in 0..8 {
+                let mut hit = None;
+                for (range_start, range_end) in &occupied {
+                    if start < *range_end - SNAP
+                        && start + clip.timeline.duration > *range_start + SNAP
+                    {
+                        hit = Some(*range_end);
+                    }
+                }
+                match hit {
+                    Some(end) => start = end,
+                    None => break,
+                }
+            }
+            if start != clip.timeline.start {
+                starts.push((index, start));
+            }
+        }
+        for (index, start) in starts {
+            track.clips[index].timeline.start = start;
+        }
+
+        let mut cursor: Micros = 0;
+        for clip in track.clips.iter_mut() {
+            if !ids.contains(&clip.id) && clip.timeline.start < cursor {
+                clip.timeline.start = cursor;
+            }
+            cursor = cursor.max(clip.timeline.end());
+        }
+        track.normalize();
+    }
+    Ok(())
+}
+
 /// Split every clip crossing `at` on the given tracks (or all of them).
 pub fn split_all_at(project: &mut Project, at: Micros, track_ids: &[String]) -> Vec<ClipId> {
     let targets: Vec<ClipId> = project
@@ -717,6 +843,62 @@ mod tests {
         assert!(clips[0].is_text());
         assert_eq!(clips[1].timeline.start, 3 * ONE_SECOND);
         assert_eq!(clips[1].timeline.duration, 5 * ONE_SECOND);
+    }
+
+    #[test]
+    fn deleting_several_clips_is_one_undoable_step() {
+        let mut p = project();
+        asset(&mut p, "a1", 2 * ONE_SECOND);
+        let track = p.tracks[0].id.clone();
+        let first = append_clip(&mut p, &track, "a1", None).unwrap();
+        append_clip(&mut p, &track, "a1", None).unwrap();
+        let third = append_clip(&mut p, &track, "a1", None).unwrap();
+        let mut editor = Editor::new(p);
+        editor
+            .apply("Supprimer la sélection", |p| {
+                delete_many(p, &[first.clone(), third.clone()], true)
+            })
+            .unwrap();
+        assert_eq!(editor.project.tracks[0].clips.len(), 1);
+        // Ripple closed both gaps.
+        assert_eq!(editor.project.tracks[0].clips[0].timeline.start, 0);
+        assert!(editor.undo());
+        assert_eq!(editor.project.tracks[0].clips.len(), 3);
+    }
+
+    #[test]
+    fn moving_a_group_keeps_its_spacing_and_pushes_the_rest() {
+        let mut p = project();
+        asset(&mut p, "a1", ONE_SECOND);
+        let track = p.tracks[0].id.clone();
+        let a = append_clip(&mut p, &track, "a1", None).unwrap();
+        let b = append_clip(&mut p, &track, "a1", None).unwrap();
+        let other = append_clip(&mut p, &track, "a1", None).unwrap();
+        // Move the first two one second later: they land on the third.
+        move_many(&mut p, &[a.clone(), b.clone()], ONE_SECOND).unwrap();
+        let clips = &p.tracks[0].clips;
+        assert_eq!(clips[0].id, a);
+        assert_eq!(clips[0].timeline.start, ONE_SECOND);
+        assert_eq!(clips[1].id, b);
+        // Spacing preserved: still exactly one second after its neighbour.
+        assert_eq!(
+            clips[1].timeline.start - clips[0].timeline.start,
+            ONE_SECOND
+        );
+        // The clip that was landed on is pushed out, not overwritten.
+        assert_eq!(clips[2].id, other);
+        assert_eq!(clips[2].timeline.start, 3 * ONE_SECOND);
+    }
+
+    #[test]
+    fn group_move_never_goes_before_zero() {
+        let mut p = project();
+        asset(&mut p, "a1", ONE_SECOND);
+        let track = p.tracks[0].id.clone();
+        let a = append_clip(&mut p, &track, "a1", None).unwrap();
+        let b = append_clip(&mut p, &track, "a1", None).unwrap();
+        move_many(&mut p, &[a, b], -5 * ONE_SECOND).unwrap();
+        assert_eq!(p.tracks[0].clips[0].timeline.start, 0);
     }
 
     #[test]

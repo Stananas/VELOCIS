@@ -14,4 +14,5 @@ tokio.workspace = true
 axum = { version = "0.8", features = ["json"] }
 tower-http = { version = "0.6", features = ["fs", "trace"] }
 tower = { version = "0.5", features = ["util"] }
+futures-util = "0.3"
 uuid.workspace = true

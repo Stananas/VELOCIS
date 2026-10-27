@@ -40,6 +40,11 @@ export class StageManipulator {
     this.observer.disconnect();
   }
 
+  /** Hide the box without touching the selection (used for multi-selection). */
+  hide() {
+    this.overlay.hidden = true;
+  }
+
   setCropMode(enabled) {
     this.cropMode = enabled;
     this.refresh();

@@ -159,7 +159,7 @@ const effectSpec = (kind) => EFFECTS.find((e) => e.kind === kind);
 const S = {
   snap: null,
   caps: null,
-  selection: null,
+  selected: [],
   zoom: 64,
   playhead: 0,
   tab: "media",
@@ -179,14 +179,49 @@ let manipulator = null;
 const project = () => S.snap?.project;
 const session = () => S.snap?.session;
 
+/** Every selected clip, in timeline order. */
+function selectedClips() {
+  const p = project();
+  if (!p) return [];
+  const out = [];
+  for (const track of p.tracks) {
+    for (const clip of track.clips) {
+      if (S.selected.includes(clip.id)) out.push({ clip, track });
+    }
+  }
+  return out;
+}
+
+/** The clip the inspector and the stage box act on: the last one clicked. */
 function selectedClip() {
   const p = project();
-  if (!p || !S.selection) return null;
+  if (!p || S.selected.length === 0) return null;
+  const id = S.selected[S.selected.length - 1];
   for (const track of p.tracks) {
-    const clip = track.clips.find((c) => c.id === S.selection);
+    const clip = track.clips.find((c) => c.id === id);
     if (clip) return { clip, track };
   }
   return null;
+}
+
+function isSelected(id) {
+  return S.selected.includes(id);
+}
+
+/** Select every clip between the primary and the target, on the same track. */
+function selectRange(primaryId, targetId) {
+  const p = project();
+  for (const track of p.tracks) {
+    const ids = track.clips.map((clip) => clip.id);
+    const from = ids.indexOf(primaryId);
+    const to = ids.indexOf(targetId);
+    if (from >= 0 && to >= 0) {
+      const [a, b] = from <= to ? [from, to] : [to, from];
+      S.selected = ids.slice(a, b + 1);
+      return;
+    }
+  }
+  S.selected = [targetId];
 }
 
 function assetOf(clip) {
@@ -317,25 +352,75 @@ async function refresh() {
 
 const mutate = (path, body) => act(async () => applySnapshot(await api.post(path, body)));
 
-async function importFiles(files) {
-  let last = null;
-  for (const file of files) {
-    const result = await act(async () => {
-      const buf = await file.arrayBuffer();
-      return request("POST", "/api/upload", buf, true, file.name);
+/** Upload one file, streamed by the browser, with progress.
+ *
+ * Passing the File itself to XHR lets the browser stream it from disk. Reading
+ * it into an ArrayBuffer first is what made large imports fail with "the
+ * requested file could not be read". */
+function uploadFile(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/upload");
+    xhr.setRequestHeader("x-filename", encodeURIComponent(file.name));
+    xhr.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable && onProgress) onProgress(event.loaded / event.total);
     });
-    if (result?.imported?.length) {
-      last = result.imported[0];
-      // Preparation runs in the background; following it here is what turns the
-      // first slow scrub into an instant one.
-      followPreparation(result.imported[0], result.prepare_jobs);
-    } else if (result?.failed?.length) toast(result.failed[0].error, "error");
+    xhr.addEventListener("load", () => {
+      let data = null;
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch {
+        data = { error: xhr.responseText };
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+      else reject(new Error(data?.error || `Erreur ${xhr.status}`));
+    });
+    xhr.addEventListener("error", () => reject(new Error("transfert interrompu")));
+    xhr.addEventListener("abort", () => reject(new Error("import annulé")));
+    xhr.send(file);
+  });
+}
+
+async function importFiles(files) {
+  let imported = 0;
+  let lastName = null;
+
+  for (const file of files) {
+    const progress = progressToast(`Import de « ${file.name} »…`);
+    try {
+      const result = await uploadFile(file, (ratio) =>
+        progress.update(`Import de « ${file.name} »… ${Math.round(ratio * 100)} %`)
+      );
+      progress.close();
+      if (result?.imported?.length) {
+        imported += result.imported.length;
+        lastName = result.imported[0].name;
+        followPreparation(result.imported[0], result.prepare_jobs);
+      } else if (result?.failed?.length) {
+        toast(result.failed[0].error, "error", {
+          label: "Réessayer",
+          run: () => importFiles([file]),
+        });
+      }
+    } catch (error) {
+      progress.close();
+      toast(`« ${file.name} » : ${error.message}`, "error", {
+        label: "Réessayer",
+        run: () => importFiles([file]),
+      });
+    }
   }
-  await refresh();
-  if (files.length === 1) {
-    toast(`« ${files[0].name} » importé`, "success", last ? { label: "Ajouter à la timeline", run: addToTimeline } : undefined);
-  } else {
-    toast(`${files.length} médias importés`, "success");
+
+  if (imported > 0) await refresh();
+  // Only claim success when something actually landed: a failed import used to
+  // show both an error and a "importé" toast.
+  if (imported === 1) {
+    toast(`« ${lastName} » importé`, "success", {
+      label: "Ajouter à la timeline",
+      run: () => addToTimeline(),
+    });
+  } else if (imported > 1) {
+    toast(`${imported} médias importés`, "success");
   }
 }
 
@@ -422,11 +507,13 @@ function renderSidebar() {
   $("media-grid").innerHTML = p.assets
     .map((a) => {
       const icon = a.kind === "audio" ? ICONS.audio : a.kind === "image" ? ICONS.image : ICONS.video;
-      const thumb = a.thumbnail_path ? `style="background-image:url('${esc(fileUrl(a.thumbnail_path))}')"` : "";
+      const thumb = a.thumbnail_path
+        ? `<img src="${esc(fileUrl(a.thumbnail_path))}" alt="" loading="lazy" onerror="this.remove()" />`
+        : "";
       const dims = a.width ? `${a.width}×${a.height}` : a.audio_channels ? `${a.audio_channels} canaux` : "";
       const details = `${a.name} — ${dims} ${a.video_codec || a.audio_codec || ""}`.trim();
       return `<div class="media-card" draggable="true" data-asset="${esc(a.id)}" title="${esc(details)}">
-        <div class="thumb" ${thumb}>${a.thumbnail_path ? "" : icon}
+        <div class="thumb">${icon}${thumb}
           <button class="add" data-add-asset="${esc(a.id)}" title="Ajouter à la fin de la timeline" aria-label="Ajouter ${esc(a.name)} à la timeline">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 3v10M3 8h10"/></svg>
           </button>
@@ -623,6 +710,24 @@ function renderInspector() {
       Cliquez un clip sur la timeline pour régler sa position, son volume,
       ses fondus ou ses effets.
     </div>`;
+    return;
+  }
+
+  const multi = selectedClips();
+  if (multi.length > 1) {
+    // No single clip to manipulate: leaving the box on screen would suggest one.
+    manipulator?.hide();
+    tabsHost.innerHTML = `<span class="panel-title">Sélection</span>`;
+    body.innerHTML = `<div class="empty-state">
+        <strong>${multi.length} clips sélectionnés</strong>
+        Les réglages s'appliquent à un clip à la fois. Cliquez un seul clip pour
+        modifier sa position, ses effets ou son son.
+      </div>
+      <div class="toggle-row">
+        <button class="btn" data-multi-duplicate>Dupliquer</button>
+        <button class="btn" data-multi-delete>Supprimer</button>
+      </div>
+      <p class="hint why">Ctrl + clic ajoute ou retire un clip, Maj + clic sélectionne une plage.</p>`;
     return;
   }
 
@@ -888,7 +993,7 @@ function renderClip(clip, track, pxPerSec) {
   if (clip.volume === 0) badges.push("muet");
 
   return `<div class="clip ${kindClass}" data-clip="${esc(clip.id)}" data-track="${esc(track.id)}"
-      style="left:${left}px;width:${width}px" aria-selected="${S.selection === clip.id}"
+      style="left:${left}px;width:${width}px" aria-selected="${isSelected(clip.id)}"
       title="${esc(label)} — ${fmtDuration(clip.timeline.duration)}">
     ${visual}
     <div class="label">${esc(label)}</div>
@@ -1027,8 +1132,12 @@ function startClipDrag(event, clipEl, mode) {
   }
   const asset = assetOf(found);
 
+  // A clip that belongs to a multi-selection drags the whole group.
+  const group = isSelected(clipId) && S.selected.length > 1 ? [...S.selected] : [clipId];
+
   S.drag = {
     mode,
+    group,
     clipId,
     trackId,
     startX: event.clientX,
@@ -1066,8 +1175,13 @@ function updateClipDrag(event) {
     start = snap.time;
     showSnapLine(snap.snappedAt);
     drag.previewStart = start;
-    el.style.transform = `translateX(${((start - drag.origin.timeline.start) / US) * S.zoom}px)`;
-    const lane = laneFromPoint(event.clientY);
+    drag.delta = start - drag.origin.timeline.start;
+    const shift = `${((drag.delta / US) * S.zoom).toFixed(2)}px`;
+    for (const id of drag.group) {
+      const node = document.querySelector(`.clip[data-clip="${id}"]`);
+      if (node) node.style.transform = `translateX(${shift})`;
+    }
+    const lane = drag.group.length > 1 ? null : laneFromPoint(event.clientY);
     if (lane && lane !== drag.targetTrack) {
       const target = project().tracks.find((t) => t.id === lane);
       const asset = assetOf(drag.origin);
@@ -1118,6 +1232,13 @@ async function endClipDrag() {
     const changed = drag.previewStart !== drag.origin.timeline.start || drag.targetTrack !== drag.trackId;
     if (!changed) {
       renderTimeline();
+      return;
+    }
+    if (drag.group.length > 1) {
+      await mutate("/api/clip/move-many", {
+        clip_ids: drag.group,
+        delta: Math.round(drag.delta ?? 0),
+      });
       return;
     }
     await mutate("/api/clip/move", {
@@ -1297,6 +1418,7 @@ function helpModal() {
     ["Maj + ← / →", "Déplacer le curseur d'une image"],
     ["Début / Fin", "Aller au début ou à la fin"],
     ["+ / −", "Zoomer ou dézoomer la timeline"],
+    ["Ctrl + 0", "Ajuster la chronologie à la fenêtre"],
     ["[", "Afficher ou masquer le panneau des médias"],
     ["]", "Afficher ou masquer les propriétés"],
   ];
@@ -1327,7 +1449,7 @@ function queueClipPatch(patch, label) {
   Object.assign(pendingPatch.patch, patch);
   clearTimeout(pendingPatch.timer);
   pendingPatch.timer = setTimeout(async () => {
-    const body = { clip_id: S.selection, ...pendingPatch.patch };
+    const body = { clip_id: selectedClip()?.clip.id, ...pendingPatch.patch };
     pendingPatch.patch = {};
     const snap = await act(() => api.post("/api/clip/update", { ...body, label }));
     if (snap) {
@@ -1356,7 +1478,7 @@ function bindEvents() {
       api.post("/api/project/new", { name: "Projet sans titre", aspect, height: p.canvas.height })
     );
     if (!snap) return;
-    S.selection = null;
+    S.selected = [];
     S.playhead = 0;
     applySnapshot(snap);
     toast("Nouveau projet", "success");
@@ -1525,7 +1647,7 @@ function bindEvents() {
 
   $("effects-catalog").addEventListener("click", async (e) => {
     const btn = e.target.closest("[data-add-effect]");
-    if (!btn || !S.selection) return;
+    if (!btn || S.selected.length === 0) return;
     const spec = effectSpec(btn.dataset.addEffect);
     if (!spec) return;
     const selection = selectedClip();
@@ -1615,14 +1737,26 @@ function bindEvents() {
     if (!clipEl) {
       // Only the ruler moves the playhead. Clicking a lane used to seek too, but
       // it made every stray click jump the timeline: deselecting is enough.
-      S.selection = null;
+      S.selected = [];
       renderTimeline();
       renderInspector();
       renderEffectsCatalog();
       return;
     }
     const handle = e.target.closest("[data-handle]");
-    S.selection = clipEl.dataset.clip;
+    const clickedId = clipEl.dataset.clip;
+    const additive = e.ctrlKey || e.metaKey;
+    if (additive) {
+      S.selected = isSelected(clickedId)
+        ? S.selected.filter((id) => id !== clickedId)
+        : [...S.selected, clickedId];
+    } else if (e.shiftKey && S.selected.length > 0) {
+      selectRange(S.selected[S.selected.length - 1], clickedId);
+    } else if (!isSelected(clickedId)) {
+      // Clicking an already selected clip keeps the selection, so a group can be
+      // dragged without losing the others.
+      S.selected = [clickedId];
+    }
     // Selecting a clip that is not under the playhead would show a selection box
     // over unrelated frames. Move the playhead onto it so direct manipulation
     // always acts on what is on screen.
@@ -1640,7 +1774,7 @@ function bindEvents() {
     // longer reach the delegation root. Selection is reflected in place, and the
     // full render happens when the gesture ends.
     for (const node of document.querySelectorAll(".clip")) {
-      node.setAttribute("aria-selected", String(node === clipEl));
+      node.setAttribute("aria-selected", String(isSelected(node.dataset.clip)));
     }
     renderInspector();
     renderEffectsCatalog();
@@ -1693,13 +1827,7 @@ function bindEvents() {
   $("btn-split").onclick = splitAtPlayhead;
   $("btn-delete").onclick = deleteSelection;
   $("btn-duplicate").onclick = duplicateSelection;
-  $("btn-fit").onclick = () => {
-    const duration = session()?.duration || 1;
-    const width = document.querySelector(".ruler-wrap").clientWidth - 40;
-    S.zoom = clamp(width / (duration / US), 6, 320);
-    $("zoom").value = String(Math.round(S.zoom));
-    renderTimeline();
-  };
+  $("btn-fit").onclick = fitTimeline;
   $("zoom").oninput = (e) => {
     S.zoom = Number(e.target.value);
     renderTimeline();
@@ -1721,6 +1849,19 @@ function seekFromScrub(e) {
   const ratio = clamp((e.clientX - rect.left) / rect.width, 0, 1);
   const total = session()?.duration || 0;
   setPlayhead(ratio * total);
+}
+
+/** Scale the timeline so the whole content fits without scrolling.
+ *
+ * The content is the project duration plus the empty tail you can drop media
+ * into; fitting only the clips leaves that tail off-screen and a scrollbar. */
+function fitTimeline() {
+  const wrap = document.querySelector(".ruler-wrap");
+  const contentSeconds = Math.max(1, timelineTotal() / US);
+  const width = Math.max(200, wrap.clientWidth - 8);
+  S.zoom = clamp(width / contentSeconds, 6, 320);
+  $("zoom").value = String(Math.round(S.zoom));
+  renderTimeline();
 }
 
 function setPlayhead(us) {
@@ -1749,20 +1890,30 @@ function splitAtPlayhead() {
 }
 
 function deleteSelection() {
-  if (!S.selection) {
+  const ids = [...S.selected];
+  if (ids.length === 0) {
     toast("Sélectionnez d'abord un clip", "error");
     return;
   }
-  mutate("/api/clip/delete", { clip_id: S.selection, ripple: true });
-  S.selection = null;
+  if (ids.length === 1) {
+    mutate("/api/clip/delete", { clip_id: ids[0], ripple: true });
+  } else {
+    mutate("/api/clip/delete-many", { clip_ids: ids, ripple: true });
+  }
+  S.selected = [];
 }
 
 function duplicateSelection() {
-  if (!S.selection) {
+  const ids = [...S.selected];
+  if (ids.length === 0) {
     toast("Sélectionnez d'abord un clip", "error");
     return;
   }
-  mutate("/api/clip/duplicate", { clip_id: S.selection });
+  if (ids.length === 1) {
+    mutate("/api/clip/duplicate", { clip_id: ids[0] });
+  } else {
+    mutate("/api/clip/duplicate-many", { clip_ids: ids });
+  }
 }
 
 /** Close a gap by pulling everything after it to the left. */
@@ -1805,6 +1956,11 @@ function onKeyDown(e) {
   if (meta && e.key.toLowerCase() === "y") {
     e.preventDefault();
     mutate("/api/history/redo");
+    return;
+  }
+  if (meta && (e.key === "0" || e.code === "Digit0" || e.code === "Numpad0")) {
+    e.preventDefault();
+    fitTimeline();
     return;
   }
   if (meta && e.key.toLowerCase() === "d") {
@@ -1933,6 +2089,14 @@ function onInspectorClick(e) {
     const field = mirror.dataset.transformToggle;
     queueClipPatch({ transform: { ...clip.transform, [field]: !clip.transform[field] } }, "Miroir");
     renderInspector();
+    return;
+  }
+  if (e.target.closest("[data-multi-delete]")) {
+    deleteSelection();
+    return;
+  }
+  if (e.target.closest("[data-multi-duplicate]")) {
+    duplicateSelection();
     return;
   }
   if (e.target.closest("[data-crop-toggle]")) {

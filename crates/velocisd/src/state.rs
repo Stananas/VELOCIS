@@ -227,9 +227,10 @@ pub fn import_file(app: &App, path: &Path) -> anyhow::Result<MediaAsset> {
     let mut asset = probe::probe(path)?;
     let stem = format!("{:016x}", hash_string(&asset.path));
     // Peaks require decoding the whole audio track. On a four-hour file that is
-    // minutes of work for a detail nobody can read at that zoom level, so long
-    // assets are imported without a waveform.
-    let want_waveform = asset.duration <= 20 * 60 * ONE_SECOND;
+    // minutes of work for a detail nobody can read at that zoom level, and an
+    // image or a silent video has no audio track at all — asking ffmpeg for one
+    // fails the whole import.
+    let want_waveform = asset.audio_codec.is_some() && asset.duration <= 20 * 60 * ONE_SECOND;
     match asset.kind {
         AssetKind::Audio => {
             if want_waveform {
@@ -238,7 +239,14 @@ pub fn import_file(app: &App, path: &Path) -> anyhow::Result<MediaAsset> {
         }
         _ => {
             let thumb = app.media_dir.join(format!("thumb_{stem}.jpg"));
-            thumbs::write_thumbnail(path, (asset.duration / 8).max(0), 320, &thumb)?;
+            // A still has one frame: seeking a eighth of the way in would find
+            // nothing.
+            let poster_at = if asset.kind == AssetKind::Image {
+                0
+            } else {
+                (asset.duration / 8).max(0)
+            };
+            thumbs::write_thumbnail(path, poster_at, 320, &thumb)?;
             asset.thumbnail_path = Some(thumb.to_string_lossy().into_owned());
             if want_waveform {
                 let peaks = thumbs::extract_waveform(path, asset.duration, 1200)?;

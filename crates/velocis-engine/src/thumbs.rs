@@ -15,10 +15,34 @@ use std::process::{Command, Stdio};
 const PEAK_SAMPLE_RATE: u32 = 8_000;
 
 /// Render a single frame of `src` at `at` into `dest` as JPEG.
+///
+/// A still image has exactly one frame, so seeking into it yields nothing — and
+/// ffmpeg exits *successfully* while writing no file. The output is therefore
+/// checked, and an empty result is retried from the start rather than reported
+/// as a thumbnail that does not exist.
 pub fn write_thumbnail(src: &Path, at: Micros, width: u32, dest: &Path) -> Result<()> {
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)?;
     }
+    let _ = std::fs::remove_file(dest);
+
+    if render_frame(src, at, width, dest).is_ok() && is_non_empty(dest) {
+        return Ok(());
+    }
+    if at > 0 && render_frame(src, 0, width, dest).is_ok() && is_non_empty(dest) {
+        return Ok(());
+    }
+    let _ = std::fs::remove_file(dest);
+    bail!("génération de vignette échouée: aucune image produite");
+}
+
+fn is_non_empty(path: &Path) -> bool {
+    std::fs::metadata(path)
+        .map(|m| m.len() > 0)
+        .unwrap_or(false)
+}
+
+fn render_frame(src: &Path, at: Micros, width: u32, dest: &Path) -> Result<()> {
     let seconds = at as f64 / ONE_SECOND as f64;
     let out = Command::new(ffmpeg_bin())
         .args(["-hide_banner", "-loglevel", "error", "-y"])
@@ -29,6 +53,10 @@ pub fn write_thumbnail(src: &Path, at: Micros, width: u32, dest: &Path) -> Resul
         .arg(src)
         .args(["-frames:v", "1"])
         .args(["-vf", &format!("scale={width}:-2")])
+        // Full-range sources (screen captures, PNGs) make the mjpeg encoder fail
+        // with "Non full-range YUV is non-standard". Asking for full-range output
+        // is the fix; without it, importing an image fails outright.
+        .args(["-pix_fmt", "yuvj420p"])
         .args(["-q:v", "4"])
         .arg(dest)
         .output()
